@@ -1,0 +1,30 @@
+﻿# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+BAKPACS_env/
+.venv/
+venv/
+env/
+
+# Databases and generated registry files
+*.duckdb
+*.duckdb.wal
+DB_files/
+
+# Logs and temporary outputs
+*.log
+*.tmp
+*.bak
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Keep subject data out of this repo if paths are copied here later
+Subject Data/

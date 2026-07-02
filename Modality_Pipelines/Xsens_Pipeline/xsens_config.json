@@ -1,0 +1,12 @@
+﻿{
+  "pipeline_metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-07-02"
+  },
+  "XSENS_SAMPLING_FREQUENCY": 60,
+  "FILTER": {
+    "LOWPASS_ORDER": 2,
+    "LOWPASS_CUTOFF": 6,
+    "SAMPLING_FREQUENCY": 60
+  }
+}

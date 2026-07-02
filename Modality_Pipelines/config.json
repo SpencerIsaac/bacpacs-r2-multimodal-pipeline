@@ -1,0 +1,130 @@
+{
+    "metadata": {
+        "project_name": "BACPACS R2 Spinal Stim",
+        "config_type": "shared_pipeline_config",
+        "version": "0.4.0",
+        "last_updated": "2026-07-02",
+        "description": "Shared SOP-backed vocabulary for the R2 multimodal ambulation pipeline. Primary raw-file extensions identify files registered for processing; sidecar files remain on disk."
+    },
+    "project": {
+        "project_root": "Y:\\BACPACS R2 - Spinal Stim",
+        "subject_data_root": "Y:\\BACPACS R2 - Spinal Stim\\Subject Data",
+        "pipeline_root": "Y:\\BACPACS R2 - Spinal Stim\\Pipeline_development\\Modality_Pipelines",
+        "database_path": "Y:\\BACPACS R2 - Spinal Stim\\Pipeline_development\\r2_pipeline.duckdb"
+    },
+    "file_naming": {
+        "pattern": "R2_{participant_number}_{visit}_{modality}_{outcome}",
+        "schema_keys": [
+            "participant_number",
+            "visit",
+            "test",
+            "condition",
+            "speed",
+            "trial",
+            "cycle"
+        ],
+        "participant_number_format": "{:03d}",
+        "participant_folder_template": "R2_{participant_number}",
+        "file_name_keys": [
+            "participant_number",
+            "visit",
+            "modality",
+            "outcome"
+        ]
+    },
+    "visits": {
+        "baseline": {
+            "folder": "2. Baseline",
+            "file_code": "BL"
+        },
+        "pre_test": {
+            "folder": "3. Pre-Test",
+            "file_code": "PR"
+        },
+        "mid_test": {
+            "folder": "4. Mid-Test",
+            "file_code": "MP"
+        },
+        "post_test": {
+            "folder": "5. Post-Test",
+            "file_code": "PT"
+        },
+        "follow_up": {
+            "folder": "6. Follow-Up",
+            "file_code": "FU"
+        }
+    },
+    "modalities": {
+        "gaitrite": {
+            "folder": "GAITRite",
+            "file_code": "GR",
+            "primary_extensions": [
+                "xlsx"
+            ]
+        },
+        "xsens": {
+            "folder": "Xsens",
+            "file_code": "xsens",
+            "primary_extensions": [
+                "mvnx"
+            ]
+        },
+        "delsys": {
+            "folder": "Delsys",
+            "file_code": "delsys",
+            "primary_extensions": [
+                "mat"
+            ]
+        },
+        "cosmed": {
+            "folder": "Cosmed",
+            "file_code": "cosmed",
+            "primary_extensions": [
+                "xlsx"
+            ]
+        },
+        "afo": {
+            "folder": "AFO",
+            "file_code": "AFO",
+            "primary_extensions": [
+                "csv"
+            ]
+        }
+    },
+    "conditions": {
+        "no_afo": {
+            "file_code": "noAFO",
+            "description": "standard aid / no Smart AFO condition"
+        },
+        "afo": {
+            "file_code": "AFO",
+            "description": "Smart AFO condition"
+        }
+    },
+    "tasks": {
+        "6mwt": {
+            "outcome_code": "6MWT",
+            "speeds": [
+                "none"
+            ],
+            "trials": [
+                "01"
+            ]
+        },
+        "10mwt": {
+            "speeds": [
+                "self_selected",
+                "fast"
+            ],
+            "trials": [
+                "01",
+                "02",
+                "03"
+            ]
+        }
+    },
+    "speed_outcome_codes": {
+        "self_selected": "SSV{:d}",
+        "fast": "FV{:d}"
+    }
+}
