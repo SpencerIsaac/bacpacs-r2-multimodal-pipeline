@@ -1,0 +1,27 @@
+﻿{
+    "metadata": {
+        "modality": "Cosmed",
+        "config_type": "modality_processing_config",
+        "version": "0.1.0",
+        "last_updated": "2026-07-06",
+        "description": "COSMED breath-by-breath loading configuration translated from the shared MATLAB cosmed/loadCosmedData.m utility."
+    },
+    "HEADER_ROW": 0,
+    "DATA_START_ROW": 4,
+    "TIME_COLUMN": "t",
+    "PHASE_COLUMN": "Phase",
+    "NUMERIC_COLUMNS": {
+        "VT": "VT",
+        "VE": "VE",
+        "VO2": "VO2",
+        "VCO2": "VCO2",
+        "RQ": "RQ",
+        "VE_VO2": "VE/VO2",
+        "VE_VCO2": "VE/VCO2",
+        "HR": "HR",
+        "VO2_HR": "VO2/HR",
+        "PetO2": "PetO2",
+        "PetCO2": "PetCO2",
+        "FAT": "FAT"
+    }
+}
