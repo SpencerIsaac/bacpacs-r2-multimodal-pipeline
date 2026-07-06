@@ -2,32 +2,25 @@
 SciStack wrappers for COSMED processing stages.
 
 @author shensley01
-@version 0.1.0
+@version 0.2.0
 @last_updated 2026-07-06
 @change_log
+    - 2026-07-06 v0.2.0: Routed COSMED stage through shared SciStack runner
+      with schema_filter/schema_level, track_lineage=True, and skip_computed=True.
     - 2026-07-06 v0.1.0: Added COSMED RawFile -> CosmedProcessed SciDB
       for_each wrapper.
 """
 
 from __future__ import annotations
 
-import scidb
-
-from Modality_Pipelines.common.common_config import SCHEMA_KEYS, configure_scistack_database
 from Modality_Pipelines.common.scidb_tables import CosmedProcessed, CosmedRawFile
+from Modality_Pipelines.common.scistack_runner import run_scistack_stage
 from Modality_Pipelines.Cosmed_Pipeline.process_cosmed import process_cosmed_raw_file
 
 
 def run_cosmed_processing(**schema_filters):
-    """Load registered COSMED raw files through SciDB.
-
-    Pass schema filters such as participant_number=["001"] or visit=["BL"]
-    to limit the run. Empty lists mean bulk processing across all identities.
-    """
-    configure_scistack_database()
-    filters = {key: schema_filters.get(key, []) for key in SCHEMA_KEYS}
-
-    return scidb.for_each(
+    """Load registered COSMED raw files through SciDB-owned looping."""
+    return run_scistack_stage(
         process_cosmed_raw_file,
         inputs={
             "raw_file_record": CosmedRawFile,
@@ -35,7 +28,5 @@ def run_cosmed_processing(**schema_filters):
         outputs=[
             CosmedProcessed,
         ],
-        distribute=True,
-        skip_computed=True,
-        **filters,
+        schema_filters=schema_filters,
     )
