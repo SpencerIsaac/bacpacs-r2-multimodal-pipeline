@@ -1,9 +1,10 @@
 ﻿# R2 Modality Pipelines
 
 @author shensley01
-@version 0.3.0
-@last_updated 2026-07-02
+@version 0.3.1
+@last_updated 2026-07-06
 @change_log
+- 2026-07-06 v0.3.1: Deprecated the unused `ProcessingLog` artifact and aligned documented table classes with the current pipeline surface.
 - 2026-07-02 v0.3.0: Documented separate file_name_keys and analysis schema_keys.
 - 2026-07-01 v0.2.1: Clarified project path config keys: project_root, subject_data_root, pipeline_root, and database_path.
 - 2026-07-01 v0.2.0: Updated documented hierarchy after moving shared SciDB tables into common and GAITRite scaffold files into GAITRite_Pipeline.
@@ -40,7 +41,7 @@ common/scidb_tables.py
 
 `common_config.py` loads the shared JSON config and provides small path/name helpers.
 
-`scidb_tables.py` defines SciDB table classes such as `GAITRiteRawFile`, `XsensRawFile`, `DelsysRawFile`, `CosmedRawFile`, `GAITRiteLoaded`, `XsensProcessed`, `DelsysProcessed`, `SynchronizationMetadata`, `QCResult`, `ProcessingRun`, `ProcessedArtifact`, `AnalysisRun`, and `ProcessingLog`.
+`scidb_tables.py` defines SciDB table classes for modality-specific raw-file records and processed outputs, including `GAITRiteRawFile`, `XsensRawFile`, `DelsysRawFile`, `CosmedRawFile`, `AfoRawFile`, `GAITRiteLoaded`, `GAITRiteCycle`, `XsensProcessed`, `DelsysProcessed`, `CosmedProcessed`, and `AfoProcessed`.
 
 ## Modality-Specific Code
 
@@ -109,6 +110,7 @@ Which files match the SOP naming convention?
 Which files are in the wrong folder?
 Which participant/visit/modality/outcome combinations are ready to process?
 ```
+
 
 
 

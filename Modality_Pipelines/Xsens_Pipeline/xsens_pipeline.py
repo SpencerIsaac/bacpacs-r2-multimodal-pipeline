@@ -1,4 +1,4 @@
-﻿"""
+"""
 SciStack wrappers for Xsens processing stages.
 
 @author shensley01
@@ -13,12 +13,13 @@ SciStack wrappers for Xsens processing stages.
 from __future__ import annotations
 
 from Modality_Pipelines.common.scidb_tables import XsensProcessed, XsensRawFile
-from Modality_Pipelines.common.scistack_runner import run_scistack_stage
+from Modality_Pipelines.common.scistack_runner import run_scistack_stage, split_stage_kwargs
 from Modality_Pipelines.Xsens_Pipeline.process_xsens import process_xsens_raw_file
 
 
 def run_xsens_processing(**schema_filters):
     """Run Xsens raw-file processing through SciDB-owned looping."""
+    schema_filters, stage_options = split_stage_kwargs(schema_filters)
     return run_scistack_stage(
         process_xsens_raw_file,
         inputs={

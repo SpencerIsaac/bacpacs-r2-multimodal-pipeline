@@ -1,4 +1,4 @@
-﻿"""
+"""
 SciStack wrappers for Delsys processing stages.
 
 @author shensley01
@@ -13,12 +13,13 @@ SciStack wrappers for Delsys processing stages.
 from __future__ import annotations
 
 from Modality_Pipelines.common.scidb_tables import DelsysProcessed, DelsysRawFile
-from Modality_Pipelines.common.scistack_runner import run_scistack_stage
+from Modality_Pipelines.common.scistack_runner import run_scistack_stage, split_stage_kwargs
 from Modality_Pipelines.Delsys_Pipeline.process_delsys import process_delsys_raw_file
 
 
 def run_delsys_processing(**schema_filters):
     """Run Delsys raw-file processing through SciDB-owned looping."""
+    schema_filters, stage_options = split_stage_kwargs(schema_filters)
     return run_scistack_stage(
         process_delsys_raw_file,
         inputs={

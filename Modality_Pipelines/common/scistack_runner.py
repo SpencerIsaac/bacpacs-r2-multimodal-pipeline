@@ -1,8 +1,8 @@
-﻿"""
+"""
 Shared SciStack execution helpers for modality pipeline stages.
 
 @author shensley01
-@version 0.1.0
+@version 0.2.0
 @last_updated 2026-07-06
 @change_log
     - 2026-07-06 v0.1.0: Added centralized scidb.for_each wrapper using
@@ -51,7 +51,7 @@ def run_scistack_stage(
     outputs: Sequence[type],
     schema_filters: Mapping[str, Any] | None = None,
     *,
-    distribute: bool = True,
+    distribute: bool = False,
     skip_computed: bool = True,
     track_lineage: bool = True,
     dry_run: bool = False,

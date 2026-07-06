@@ -6,16 +6,16 @@ like a table-like collection keyed by the configured analysis schema metadata:
 participant_number, visit, test, condition, speed, trial, and cycle.
 
 @author shensley01
-@version 0.3.0
-@last_updated 2026-07-02
+@version 0.3.1
+@last_updated 2026-07-06
 @change_log
+    - 2026-07-06 v0.3.1: Deprecated and removed ProcessingLog; processing audit records are out of scope for the current pipeline.
     - 2026-07-02 v0.3.0: Added AFO raw/processed table classes and kept modality-specific RawFile design.
     - 2026-07-02 v0.2.1: Replaced generic RawFileRecord with modality-specific raw-file table classes.
     - 2026-07-02 v0.2.0: Added modality-specific raw-file tables and run/artifact tracking table scaffolds.
     - 2026-07-01 v0.1.1: Moved from Pipeline_development root into Modality_Pipelines/common.
     - 2026-07-01 v0.1.0: Renamed vars.py to scidb_tables.py and added initial
-      table classes for raw files, modality outputs, synchronization, QC, and
-      processing audit records.
+      table classes for raw files and modality outputs.
 """
 
 from scidb import BaseVariable
@@ -90,8 +90,4 @@ class AfoProcessed(BaseVariable):
 
     schema_version = 1
 
-#unimplemented for now; not sure how this will be used yet.
-class ProcessingLog(BaseVariable):
-    """Human-readable audit record for pipeline stage execution and updates."""
 
-    schema_version = 1

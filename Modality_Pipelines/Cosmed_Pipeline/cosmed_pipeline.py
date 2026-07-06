@@ -1,4 +1,4 @@
-﻿"""
+"""
 SciStack wrappers for COSMED processing stages.
 
 @author shensley01
@@ -14,12 +14,13 @@ SciStack wrappers for COSMED processing stages.
 from __future__ import annotations
 
 from Modality_Pipelines.common.scidb_tables import CosmedProcessed, CosmedRawFile
-from Modality_Pipelines.common.scistack_runner import run_scistack_stage
+from Modality_Pipelines.common.scistack_runner import run_scistack_stage, split_stage_kwargs
 from Modality_Pipelines.Cosmed_Pipeline.process_cosmed import process_cosmed_raw_file
 
 
 def run_cosmed_processing(**schema_filters):
     """Load registered COSMED raw files through SciDB-owned looping."""
+    schema_filters, stage_options = split_stage_kwargs(schema_filters)
     return run_scistack_stage(
         process_cosmed_raw_file,
         inputs={
