@@ -1,0 +1,50 @@
+﻿{
+    "metadata": {
+        "modality": "GAITRite",
+        "config_type": "modality_processing_config",
+        "version": "0.1.0",
+        "last_updated": "2026-07-06",
+        "description": "GAITRite Excel loading configuration translated from the shared MATLAB load-gaitrite library. Column names target the footfall-level export block."
+    },
+    "SAMPLING_FREQUENCY": 120,
+    "COLUMN_NAMES": {
+        "GAIT_ID": "Test Record #",
+        "TIME": "Date / Time Stamp",
+        "LEFT_RIGHT": "Left/Right Foot",
+        "HEEL_ON": "Heel On",
+        "TOE_OFF": "Toe Off",
+        "HEEL_OFF": "Heel Off",
+        "TOE_ON": "Toe On",
+        "STEP_LENGTH": "Step Length",
+        "SWING_TIME": "Swing Time",
+        "STEP_TIME": "Step Time",
+        "STANCE_TIME": "Stance Time",
+        "STRIDE_TIME": "Stride Time",
+        "STRIDE_LENGTH": "Stride Length",
+        "STEP_WIDTH": "Step Width",
+        "STRIDE_WIDTH": "Stride Width",
+        "STRIDE_VELOCITY": "Stride Velocity",
+        "SINGLE_SUPPORT_TIME": "Single Support Time (sec)",
+        "DOUBLE_SUPPORT_TIME": "Double Support Time (sec)"
+    },
+    "COLUMN_ALIASES": {
+        "GAIT_ID": ["Gait_Id", "Test Record #"],
+        "TIME": ["Time", "Date / Time Stamp", "Date / Time of Test"],
+        "LEFT_RIGHT": ["Foot", "Left/Right Foot"],
+        "HEEL_ON": ["HeelOn", "Heel On"],
+        "TOE_OFF": ["ToeOff", "Toe Off"],
+        "HEEL_OFF": ["HeelOff", "Heel Off"],
+        "TOE_ON": ["ToeOn", "Toe On"],
+        "STEP_LENGTH": ["Step_length", "Step Length"],
+        "SWING_TIME": ["Swing_time", "Swing Time"],
+        "STEP_TIME": ["Step_time", "Step Time"],
+        "STANCE_TIME": ["Stance_time", "Stance Time"],
+        "STRIDE_TIME": ["Stride_time", "Stride Time"],
+        "STRIDE_LENGTH": ["Stride_length", "Stride Length"],
+        "STEP_WIDTH": ["StepWidth", "Step Width"],
+        "STRIDE_WIDTH": ["StrideWidth", "Stride Width"],
+        "STRIDE_VELOCITY": ["Stride_velocity", "Stride Velocity"],
+        "SINGLE_SUPPORT_TIME": ["Supp_time_Single", "Single Support Time (sec)"],
+        "DOUBLE_SUPPORT_TIME": ["Supp_time_Double", "Double Support Time (sec)"]
+    }
+}
