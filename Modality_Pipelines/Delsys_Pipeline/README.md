@@ -83,7 +83,7 @@ sequenceDiagram
     Proc->>Out: processed artifact
 ```
 
-SciStack-facing table classes live in `Modality_Pipelines/common/scidb_tables.py`:
+SciStack-facing table classes live in `Modality_Pipelines/common/r2_scidb_tables.py`:
 
 - Input: `DelsysRawFile`
 - Output: `DelsysProcessed`
@@ -304,7 +304,7 @@ Researchers should check the metadata fields `emg_channel_names` and `auxiliary_
 Direct one-file validation:
 
 ```powershell
-& "\\fs2.smpp.local\RTO\BACPACS R2 - Spinal Stim\Pipeline_development\BAKPACS_env\python.exe" -c "import sys; sys.path.insert(0, r'\\fs2.smpp.local\RTO\BACPACS R2 - Spinal Stim\Pipeline_development'); from Modality_Pipelines.Delsys_Pipeline.process_delsys import process_delsys_raw_file; result = process_delsys_raw_file(r'PATH_TO_DELSYS_FILE.mat'); print(result['metadata']['emg_channel_names']); print(result['metadata']['auxiliary_channel_names'])"
+& "\\fs2.smpp.local\RTO\BACPACS R2 - Spinal Stim\Pipeline_development\BACPACS_env\python.exe" -c "import sys; sys.path.insert(0, r'\\fs2.smpp.local\RTO\BACPACS R2 - Spinal Stim\Pipeline_development'); from Modality_Pipelines.Delsys_Pipeline.process_delsys import process_delsys_raw_file; result = process_delsys_raw_file(r'PATH_TO_DELSYS_FILE.mat'); print(result['metadata']['emg_channel_names']); print(result['metadata']['auxiliary_channel_names'])"
 ```
 
 SciStack stage run from Python:
@@ -548,7 +548,7 @@ Sampling frequency behavior:
 In `delsys_pipeline.py`, import:
 
 ```python
-from Modality_Pipelines.common.scidb_tables import DelsysProcessed, DelsysRawFile
+from Modality_Pipelines.common.r2_scidb_tables import DelsysProcessed, DelsysRawFile
 from Modality_Pipelines.common.scistack_runner import run_scistack_stage
 from Modality_Pipelines.Delsys_Pipeline.process_delsys import process_delsys_raw_file
 ```

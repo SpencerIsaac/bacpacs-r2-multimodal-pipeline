@@ -13,7 +13,7 @@ SciStack wrappers for GAITRite processing stages.
 
 from __future__ import annotations
 
-from Modality_Pipelines.common.scidb_tables import GAITRiteCycle, GAITRiteLoaded, GAITRiteRawFile
+from Modality_Pipelines.common.table_registry import get_processed_tables, get_raw_file_table
 from Modality_Pipelines.common.scistack_runner import run_scistack_stage, split_stage_kwargs
 from Modality_Pipelines.GAITRite_Pipeline.load_gaitrite import (
     distribute_gaitrite_loaded,
@@ -23,29 +23,37 @@ from Modality_Pipelines.GAITRite_Pipeline.load_gaitrite import (
 
 def run_gaitrite_loading(**schema_filters):
     """Load registered GAITRite raw files through SciDB-owned looping."""
+    study = schema_filters.pop("study", "R2")
     schema_filters, stage_options = split_stage_kwargs(schema_filters)
+    gaitrite_loaded = get_processed_tables(study, "gaitrite")[0]
     return run_scistack_stage(
         process_gaitrite_raw_file,
         inputs={
-            "raw_file_record": GAITRiteRawFile,
+            "raw_file_record": get_raw_file_table(study, "gaitrite"),
         },
         outputs=[
-            GAITRiteLoaded,
+            gaitrite_loaded,
         ],
         schema_filters=schema_filters,
+        study=study,
+        **stage_options,
     )
 
 
 def run_gaitrite_cycle_distribution(**schema_filters):
     """Split loaded GAITRite trial rows into GAITRite row/cycle records."""
+    study = schema_filters.pop("study", "R2")
     schema_filters, stage_options = split_stage_kwargs(schema_filters)
+    gaitrite_loaded, gaitrite_cycle = get_processed_tables(study, "gaitrite")
     return run_scistack_stage(
         distribute_gaitrite_loaded,
         inputs={
-            "gaitrite_loaded": GAITRiteLoaded,
+            "gaitrite_loaded": gaitrite_loaded,
         },
         outputs=[
-            GAITRiteCycle,
+            gaitrite_cycle,
         ],
         schema_filters=schema_filters,
+        study=study,
+        **stage_options,
     )

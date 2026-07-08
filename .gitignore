@@ -6,7 +6,8 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Virtual environments
-BAKPACS_env/
+BACPACS_env/
+B?KPACS_env/
 .venv/
 venv/
 env/

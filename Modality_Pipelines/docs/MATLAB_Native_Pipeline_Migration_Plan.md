@@ -49,7 +49,7 @@ Important files:
 config.json
 common/common_config.py
 common/manifest.py
-common/scidb_tables.py
+common/r2_scidb_tables.py
 GAITRite_Pipeline/gaitrite_pipeline.py
 GAITRite_Pipeline/load_gaitrite.py
 Xsens_Pipeline/xsens_pipeline.py
@@ -94,7 +94,7 @@ merge-gaitrite-and-sensor-tables/
 The MATLAB SciStack layer is available through:
 
 ```text
-Y:\BACPACS R2 - Spinal Stim\Pipeline_development\BAKPACS_env\Lib\site-packages\scimatlab\matlab
+Y:\BACPACS R2 - Spinal Stim\Pipeline_development\BACPACS_env\Lib\site-packages\scimatlab\matlab
 ```
 
 Key SciStack MATLAB APIs:
@@ -208,7 +208,7 @@ Acceptance Criteria:
 Risks:
 
 - Network path mapping may differ across machines.
-- MATLAB Python environment may not point at `BAKPACS_env` by default.
+- MATLAB Python environment may not point at `BACPACS_env` by default.
 
 Mitigations:
 
@@ -468,7 +468,7 @@ Exit Criteria:
 function setup_r2_matlab_pipeline()
     pipelineRoot = "Y:\BACPACS R2 - Spinal Stim\Pipeline_development\Modality_Pipelines";
     analyticsRoot = "Y:\LabMembers\S Hensley\data_analytics_code+library\data-analytics-code-libraries\libraries";
-    scimatlabRoot = "Y:\BACPACS R2 - Spinal Stim\Pipeline_development\BAKPACS_env\Lib\site-packages\scimatlab\matlab";
+    scimatlabRoot = "Y:\BACPACS R2 - Spinal Stim\Pipeline_development\BACPACS_env\Lib\site-packages\scimatlab\matlab";
 
     addpath(genpath(fullfile(pipelineRoot, "matlab")));
     addpath(genpath(analyticsRoot));
@@ -553,7 +553,7 @@ end
 
 | Risk | Impact | Likelihood | Mitigation |
 | --- | --- | --- | --- |
-| MATLAB cannot resolve SciStack Python bridge | Blocks database-backed pipeline | Medium | Validate `pyenv`; document required Python executable; use existing `BAKPACS_env` |
+| MATLAB cannot resolve SciStack Python bridge | Blocks database-backed pipeline | Medium | Validate `pyenv`; document required Python executable; use existing `BACPACS_env` |
 | Existing MATLAB loaders return shapes that do not save cleanly into SciDB | Blocks processed table writes | Medium | Start with GAITRite vertical slice; normalize outputs only at wrapper boundary |
 | Raw file names or folders diverge from SOP | Creates registration errors | High | Manifest dry run with `status` and `issues`; review before registration |
 | Duplicate schema identities exist | Ambiguous processing records | Medium | Detect duplicates in manifest and require manual resolution |

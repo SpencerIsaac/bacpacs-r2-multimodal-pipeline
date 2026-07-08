@@ -1,17 +1,9 @@
 """
-Raw-file manifest and registration helpers for the R2 Spinal Stim pipeline.
+Raw-file manifest and registration helpers for the BACPACS pipeline.
 
-@author shensley01
-@version 0.2.1
-@last_updated 2026-07-02
-@change_log
-    - 2026-07-02 v0.2.1: Reordered module so dry-run validation helpers are grouped at the end.
-    - 2026-07-02 v0.2.0: Added AFO raw-file registration and slimmed RawFile DB payload to path registry fields.
-    - 2026-07-02 v0.1.3: Added config-driven primary raw-file extension filtering for sidecar-aware registration.
-    - 2026-07-02 v0.1.2: Added database_path override to raw-file registration for isolated testing.
-    - 2026-07-02 v0.1.1: Added subject_data_root override to validation for isolated testing and dry-runs.
-    - 2026-07-02 v0.1.0: Replaced template-only scaffold with raw-file discovery,
-      SOP validation, outcome parsing, and modality-specific SciDB registration helpers.
+The backend is study-aware, but modality processors remain study-agnostic.
+Raw-file registration stores validated file-path records in the selected
+study's modality-specific RawFile tables.
 """
 
 from __future__ import annotations
@@ -24,8 +16,6 @@ import pandas as pd
 
 from Modality_Pipelines.common.common_config import (
     CONDITIONS,
-    DATABASE_PATH,
-    FILE_NAME_PATTERN,
     MODALITIES,
     SCHEMA_KEYS,
     SUBJECT_DATA_ROOT,
@@ -34,29 +24,9 @@ from Modality_Pipelines.common.common_config import (
     format_participant,
     parse_file_name,
 )
-from Modality_Pipelines.common.scidb_tables import (
-    AfoRawFile,
-    CosmedRawFile,
-    DelsysRawFile,
-    GAITRiteRawFile,
-    XsensRawFile,
-)
+from Modality_Pipelines.common.study_config import StudyConfig, load_study_config
+from Modality_Pipelines.common.table_registry import get_raw_file_table
 
-
-# ---------------------------------------------------------------------------
-# Raw-file table routing
-# ---------------------------------------------------------------------------
-# The manifest keeps one raw-file registry table per modality. Each RawFile
-# table stores the file path payload, while participant/visit/test identity is
-# stored through the configured SciDB schema keys.
-
-RAW_FILE_TABLES = {
-    "gaitrite": GAITRiteRawFile,
-    "xsens": XsensRawFile,
-    "delsys": DelsysRawFile,
-    "cosmed": CosmedRawFile,
-    "afo": AfoRawFile,
-}
 
 VISIT_BY_FILE_CODE = {value["file_code"]: key for key, value in VISITS.items()}
 MODALITY_BY_FILE_CODE = {value["file_code"]: key for key, value in MODALITIES.items()}
@@ -97,37 +67,102 @@ class RawFileManifestRecord:
         }
 
 
+def _resolve_study(study: str | StudyConfig = "R2") -> StudyConfig:
+    if isinstance(study, StudyConfig):
+        return study
+    return load_study_config(study)
+
+
+def _visit_by_file_code(study_config: StudyConfig) -> dict[str, str]:
+    return {value["file_code"]: key for key, value in study_config.visits.items()}
+
+
+def _modality_by_file_code(study_config: StudyConfig) -> dict[str, str]:
+    return {value["file_code"]: key for key, value in study_config.modalities.items()}
+
+
+def _condition_by_file_code(study_config: StudyConfig) -> dict[str, str]:
+    return {value["file_code"]: value["file_code"] for value in study_config.conditions.values()}
+
+
+def _as_filter_values(value):
+    if isinstance(value, str):
+        return [value]
+    try:
+        return list(value)
+    except TypeError:
+        return [value]
+
+
+def _modality_filter_values(modality, study_config: StudyConfig):
+    return [
+        study_config.modalities.get(str(value), {}).get("file_code", value)
+        for value in _as_filter_values(modality)
+    ]
+
+
+def _apply_manifest_filters(
+    df: pd.DataFrame,
+    *,
+    participant_number=None,
+    visit=None,
+    modality=None,
+    test=None,
+    condition=None,
+    speed=None,
+    trial=None,
+    study_config: StudyConfig,
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    filters = {
+        "participant_number": participant_number,
+        "visit": visit,
+        "test": test,
+        "condition": condition,
+        "speed": speed,
+        "trial": trial,
+    }
+    if modality is not None:
+        filters["modality"] = _modality_filter_values(modality, study_config)
+
+    filtered = df
+    for column, value in filters.items():
+        if value is None or column not in filtered.columns:
+            continue
+        values = _as_filter_values(value)
+        filtered = filtered[filtered[column].isin([str(item) for item in values])]
+    return filtered
+
+
 # ---------------------------------------------------------------------------
 # SOP parsing and path helpers
 # ---------------------------------------------------------------------------
-# These helpers turn the SOP file-name convention into the schema fields that
-# SciDB uses for querying and for_each processing.
 
 
-def modality_path_template(modality_key: str) -> str:
+def modality_path_template(modality_key: str, study: str | StudyConfig = "R2") -> str:
     """Return the relative raw-file path template for one modality."""
-    modality_config = MODALITIES[modality_key]
+    study_config = _resolve_study(study)
+    modality_config = study_config.modalities[modality_key]
     return (
-        "R2_{participant_number}/"
+        f"{study_config.participant_folder_template}/"
         "{visit_folder}/"
         f"{modality_config['folder']}/"
-        f"{FILE_NAME_PATTERN}.{{extension}}"
+        f"{study_config.file_name_pattern}.{{extension}}"
     )
 
 
-def parse_outcome(outcome: str) -> dict[str, str | None]:
-    """Parse the SOP outcome field into analysis schema fields.
+def parse_outcome(outcome: str, study: str | StudyConfig = "R2") -> dict[str, str | None]:
+    """Parse the SOP outcome field into analysis schema fields."""
+    study_config = _resolve_study(study)
+    condition_by_file_code = _condition_by_file_code(study_config)
 
-    Examples
-    --------
-    ``SSV1_noAFO`` -> test=10MWT, speed=SSV, trial=1, condition=noAFO
-    ``6MWT_AFO`` -> test=6MWT, speed=None, trial=None, condition=AFO
-    """
     if "_" not in outcome:
         raise ValueError(f"Outcome {outcome!r} does not contain a condition token")
 
     test_token, condition_token = outcome.rsplit("_", maxsplit=1)
-    if condition_token not in CONDITION_BY_FILE_CODE:
+    if condition_token not in condition_by_file_code:
         raise ValueError(f"Outcome {outcome!r} has unknown condition {condition_token!r}")
 
     if test_token == "6MWT":
@@ -158,10 +193,6 @@ def parse_outcome(outcome: str) -> dict[str, str | None]:
 # ---------------------------------------------------------------------------
 # SciDB registration
 # ---------------------------------------------------------------------------
-# Registration is the first write step. It saves valid raw files into the
-# modality-specific RawFile table. The stored payload is intentionally small:
-# file_path, file_name, and extension. Query identity is stored through the
-# SciDB schema keys.
 
 
 def register_raw_files(
@@ -169,34 +200,66 @@ def register_raw_files(
     modality_keys: Iterable[str] | None = None,
     only_valid: bool = True,
     database_path: str | Path | None = None,
+    *,
+    study: str = "R2",
+    root: str | Path | None = None,
+    participant_number=None,
+    visit=None,
+    modality=None,
+    test=None,
+    condition=None,
+    speed=None,
+    trial=None,
+    dry_run: bool = False,
+    update_existing: bool = False,
 ) -> dict[str, int]:
-    """Register raw-file manifest records in modality-specific SciDB tables.
+    """Register raw-file manifest records in study-specific RawFile tables."""
+    study_config = _resolve_study(study)
+    configure_scistack_database(database_path, study_config=study_config)
 
-    If ``manifest_df`` is omitted, the dry-run manifest is built first and then
-    valid rows are registered. Raw data are not stored in SciDB.
-    """
-    configure_scistack_database(database_path or DATABASE_PATH)
-    df = manifest_df if manifest_df is not None else build_raw_file_manifest(modality_keys)
+    selected_modalities = list(modality_keys) if modality_keys is not None else None
+    if modality is not None:
+        selected_modalities = [modality] if isinstance(modality, str) else list(modality)
+
+    df = manifest_df if manifest_df is not None else build_raw_file_manifest(
+        selected_modalities,
+        subject_data_root=root or study_config.subject_data_root,
+        study=study_config,
+    )
+    df = _apply_manifest_filters(
+        df,
+        participant_number=participant_number,
+        visit=visit,
+        modality=modality,
+        test=test,
+        condition=condition,
+        speed=speed,
+        trial=trial,
+        study_config=study_config,
+    )
+
     counts = {"registered": 0, "skipped": 0}
+    modality_by_file_code = _modality_by_file_code(study_config)
 
     for _, row in df.iterrows():
         if only_valid and row["status"] != "valid":
             counts["skipped"] += 1
             continue
 
-        modality_key = MODALITY_BY_FILE_CODE.get(str(row["modality"]))
-        table = RAW_FILE_TABLES.get(modality_key) if modality_key else None
-        if table is None:
+        modality_key = modality_by_file_code.get(str(row["modality"]))
+        if modality_key is None:
             counts["skipped"] += 1
             continue
 
-        metadata = {key: (None if pd.isna(row[key]) else row[key]) for key in SCHEMA_KEYS}
+        table = get_raw_file_table(study_config.study, modality_key)
+        metadata = {key: (None if pd.isna(row[key]) else row[key]) for key in study_config.schema_keys}
         payload = {
             "file_path": row["file_path"],
             "file_name": row["file_name"],
             "extension": row["extension"],
         }
-        table.save(payload, **metadata)
+        if not dry_run:
+            table.save(payload, **metadata)
         counts["registered"] += 1
 
     return counts
@@ -205,29 +268,28 @@ def register_raw_files(
 # ---------------------------------------------------------------------------
 # Dry-run validation helpers
 # ---------------------------------------------------------------------------
-# This section is intentionally at the end of the script. These functions crawl
-# the filesystem, parse SOP file names, check folder/name agreement, and return
-# a reviewable DataFrame. They do not write to SciDB unless the caller passes
-# the resulting DataFrame into register_raw_files().
 
 
 def iter_modality_files(
     modality_key: str,
-    subject_data_root: str | Path = SUBJECT_DATA_ROOT,
+    subject_data_root: str | Path | None = None,
+    *,
+    study: str | StudyConfig = "R2",
 ) -> Iterable[Path]:
     """Yield primary raw files from expected participant/visit/modality folders."""
-    root = Path(subject_data_root)
-    modality_config = MODALITIES[modality_key]
+    study_config = _resolve_study(study)
+    root = Path(subject_data_root) if subject_data_root is not None else study_config.subject_data_root
+    modality_config = study_config.modalities[modality_key]
     modality_folder_name = modality_config["folder"]
     primary_extensions = {
         extension.lower().lstrip(".")
         for extension in modality_config.get("primary_extensions", [])
     }
 
-    for participant_dir in root.glob("R2_*"):
+    for participant_dir in root.glob(study_config.participant_glob):
         if not participant_dir.is_dir():
             continue
-        for visit_config in VISITS.values():
+        for visit_config in study_config.visits.values():
             folder = participant_dir / visit_config["folder"] / modality_folder_name
             if folder.exists():
                 for path in folder.iterdir():
@@ -238,9 +300,13 @@ def iter_modality_files(
 
 def validate_raw_file(
     file_path: str | Path,
-    subject_data_root: str | Path = SUBJECT_DATA_ROOT,
+    subject_data_root: str | Path | None = None,
+    *,
+    study: str | StudyConfig = "R2",
 ) -> RawFileManifestRecord:
     """Parse and validate one raw file against the SOP folder/name rules."""
+    study_config = _resolve_study(study)
+    root = Path(subject_data_root) if subject_data_root is not None else study_config.subject_data_root
     path = Path(file_path)
     issues: list[str] = []
     parsed: dict[str, str | None] = {
@@ -258,21 +324,24 @@ def validate_raw_file(
     }
 
     try:
-        parsed.update(parse_file_name(path.name))
+        parsed.update(parse_file_name(path.name, study_config=study_config))
     except ValueError as exc:
         issues.append(f"filename: {exc}")
 
     if parsed["outcome"]:
         try:
-            outcome_metadata.update(parse_outcome(str(parsed["outcome"])))
+            outcome_metadata.update(parse_outcome(str(parsed["outcome"]), study_config))
         except ValueError as exc:
             issues.append(f"outcome: {exc}")
 
     try:
-        relative_parts = path.relative_to(Path(subject_data_root)).parts
+        relative_parts = path.relative_to(root).parts
     except ValueError:
         relative_parts = path.parts
-        issues.append("location: file is not under SUBJECT_DATA_ROOT")
+        issues.append("location: file is not under study subject_data_root")
+
+    visit_by_file_code = _visit_by_file_code(study_config)
+    modality_by_file_code = _modality_by_file_code(study_config)
 
     if len(relative_parts) < 4:
         issues.append("location: expected participant/visit/modality/file structure")
@@ -280,15 +349,18 @@ def validate_raw_file(
         participant_folder, visit_folder, modality_folder = relative_parts[:3]
 
         if parsed["participant_number"]:
-            expected_participant_folder = format_participant(str(parsed["participant_number"]))
+            expected_participant_folder = format_participant(
+                str(parsed["participant_number"]),
+                study_config=study_config,
+            )
             if participant_folder != expected_participant_folder:
                 issues.append(
                     f"participant folder mismatch: expected {expected_participant_folder}, found {participant_folder}"
                 )
 
         if parsed["visit"]:
-            visit_key = VISIT_BY_FILE_CODE.get(str(parsed["visit"]))
-            expected_visit_folder = VISITS[visit_key]["folder"] if visit_key else None
+            visit_key = visit_by_file_code.get(str(parsed["visit"]))
+            expected_visit_folder = study_config.visits[visit_key]["folder"] if visit_key else None
             if expected_visit_folder is None:
                 issues.append(f"visit code: unknown visit {parsed['visit']!r}")
             elif visit_folder != expected_visit_folder:
@@ -297,8 +369,8 @@ def validate_raw_file(
                 )
 
         if parsed["modality"]:
-            modality_key = MODALITY_BY_FILE_CODE.get(str(parsed["modality"]))
-            expected_modality_folder = MODALITIES[modality_key]["folder"] if modality_key else None
+            modality_key = modality_by_file_code.get(str(parsed["modality"]))
+            expected_modality_folder = study_config.modalities[modality_key]["folder"] if modality_key else None
             if expected_modality_folder is None:
                 issues.append(f"modality code: unknown modality {parsed['modality']!r}")
             elif modality_folder != expected_modality_folder:
@@ -324,20 +396,23 @@ def validate_raw_file(
 
 def build_raw_file_manifest(
     modality_keys: Iterable[str] | None = None,
-    subject_data_root: str | Path = SUBJECT_DATA_ROOT,
+    subject_data_root: str | Path | None = None,
+    *,
+    study: str | StudyConfig = "R2",
 ) -> pd.DataFrame:
-    """Build a dry-run validation manifest for discovered primary raw files.
-
-    This function does not write to SciDB. It only reports what exists and
-    whether each primary raw file is ready for registration.
-    """
-    keys = list(modality_keys) if modality_keys is not None else list(MODALITIES)
+    """Build a dry-run validation manifest for discovered primary raw files."""
+    study_config = _resolve_study(study)
+    keys = list(modality_keys) if modality_keys is not None else list(study_config.modalities)
     records = []
     seen = set()
 
     for modality_key in keys:
-        for file_path in iter_modality_files(modality_key, subject_data_root):
-            record = validate_raw_file(file_path, subject_data_root)
+        for file_path in iter_modality_files(
+            modality_key,
+            subject_data_root,
+            study=study_config,
+        ):
+            record = validate_raw_file(file_path, subject_data_root, study=study_config)
             duplicate_key = (
                 record.modality,
                 record.participant_number,
@@ -355,3 +430,38 @@ def build_raw_file_manifest(
             records.append(asdict(record))
 
     return pd.DataFrame(records)
+
+
+def validate_study_files(
+    study: str = "R2",
+    root: str | Path | None = None,
+    participant_number=None,
+    visit=None,
+    modality=None,
+    test=None,
+    condition=None,
+    speed=None,
+    trial=None,
+) -> pd.DataFrame:
+    """Build and filter the dry-run validation manifest for one study."""
+    study_config = _resolve_study(study)
+    modality_keys = None
+    if modality is not None:
+        modality_keys = [modality] if isinstance(modality, str) else list(modality)
+
+    df = build_raw_file_manifest(
+        modality_keys,
+        subject_data_root=root or study_config.subject_data_root,
+        study=study_config,
+    )
+    return _apply_manifest_filters(
+        df,
+        participant_number=participant_number,
+        visit=visit,
+        modality=modality,
+        test=test,
+        condition=condition,
+        speed=speed,
+        trial=trial,
+        study_config=study_config,
+    )

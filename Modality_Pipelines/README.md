@@ -36,7 +36,7 @@ Use `common/` for code that is genuinely shared across modalities:
 
 ```text
 common/common_config.py
-common/scidb_tables.py
+common/r2_scidb_tables.py
 ```
 
 `common_config.py` loads the shared JSON config and provides small path/name helpers.
