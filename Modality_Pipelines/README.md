@@ -1,16 +1,19 @@
-﻿# R2 Modality Pipelines
+﻿# BACPACS Modality Pipelines
 
 @author shensley01
-@version 0.3.1
-@last_updated 2026-07-06
+@version 0.6.0
+@last_updated 2026-07-08
 @change_log
+- 2026-07-08 v0.6.0: Added R1/R2 study namespace routing, GUI study selection, and runtime analysis registry for downstream processed-table analyses.
+- 2026-07-07 v0.5.0: Added early control panel visibility layer for participant/modality processing state.
+- 2026-07-06 v0.4.0: Added centralized SciStack stage execution, Xsens/Delsys/GAITRite/Cosmed processing wrappers, and backend manifest registration flow.
 - 2026-07-06 v0.3.1: Deprecated the unused `ProcessingLog` artifact and aligned documented table classes with the current pipeline surface.
 - 2026-07-02 v0.3.0: Documented separate file_name_keys and analysis schema_keys.
 - 2026-07-01 v0.2.1: Clarified project path config keys: project_root, subject_data_root, pipeline_root, and database_path.
 - 2026-07-01 v0.2.0: Updated documented hierarchy after moving shared SciDB tables into common and GAITRite scaffold files into GAITRite_Pipeline.
 - 2026-07-01 v0.1.0: Added initial pipeline configuration structure and guidance.
 
-This folder contains the R2 Spinal Stim multimodal ambulation pipeline scaffolding. The pipeline is organized around the SOP file naming convention:
+This folder contains the BACPACS multimodal ambulation pipeline scaffolding. The current backend supports R2 Spinal Stim and has an R1 Smart AFO namespace ready for shared registration/processing flow. The pipeline is organized around the SOP file naming convention:
 
 ```text
 R2_{participant_number}_{visit}_{modality}_{outcome}
@@ -41,7 +44,7 @@ common/r2_scidb_tables.py
 
 `common_config.py` loads the shared JSON config and provides small path/name helpers.
 
-`scidb_tables.py` defines SciDB table classes for modality-specific raw-file records and processed outputs, including `GAITRiteRawFile`, `XsensRawFile`, `DelsysRawFile`, `CosmedRawFile`, `AfoRawFile`, `GAITRiteLoaded`, `GAITRiteCycle`, `XsensProcessed`, `DelsysProcessed`, `CosmedProcessed`, and `AfoProcessed`.
+`r1_scidb_tables.py` and `r2_scidb_tables.py` define study-specific SciDB table classes for modality-specific raw-file records and processed outputs, including `GAITRiteRawFile`, `XsensRawFile`, `DelsysRawFile`, `CosmedRawFile`, `AfoRawFile`, `GAITRiteLoaded`, `GAITRiteCycle`, `XsensProcessed`, `DelsysProcessed`, `CosmedProcessed`, and `AfoProcessed`.
 
 ## Modality-Specific Code
 
@@ -90,7 +93,11 @@ Pipeline_development/
     config.json
     common/
       common_config.py
-      scidb_tables.py
+      study_config.py
+      table_registry.py
+      analysis_registry.py
+      r1_scidb_tables.py
+      r2_scidb_tables.py
     GAITRite_Pipeline/
       gaitrite_columns.py
       gaitrite_scidb_scaffold.py
