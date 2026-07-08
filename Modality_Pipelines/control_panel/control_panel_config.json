@@ -1,0 +1,53 @@
+{
+  "metadata": {
+    "config_type": "control_panel_config",
+    "version": "0.1.0",
+    "last_updated": "2026-07-07",
+    "description": "UI-facing control panel configuration. The ledger stage map determines which SciDB tables appear as modality processing stages."
+  },
+  "ledger": {
+    "modalities": [
+      {
+        "key": "gaitrite",
+        "label": "GAITRite",
+        "stages": [
+          {"key": "raw", "label": "RawFile", "table": "GAITRiteRawFile", "column": "raw_gaitrite", "role": "raw"},
+          {"key": "loaded", "label": "Loaded", "table": "GAITRiteLoaded", "column": "processed_gaitrite_loaded"},
+          {"key": "cycle", "label": "Cycle", "table": "GAITRiteCycle", "column": "processed_gaitrite_cycle", "role": "analysis"}
+        ]
+      },
+      {
+        "key": "xsens",
+        "label": "Xsens",
+        "stages": [
+          {"key": "raw", "label": "RawFile", "table": "XsensRawFile", "column": "raw_xsens", "role": "raw"},
+          {"key": "processed", "label": "Processed", "table": "XsensProcessed", "column": "processed_xsens", "role": "analysis"}
+        ]
+      },
+      {
+        "key": "delsys",
+        "label": "Delsys",
+        "stages": [
+          {"key": "raw", "label": "RawFile", "table": "DelsysRawFile", "column": "raw_delsys", "role": "raw"},
+          {"key": "processed", "label": "Processed", "table": "DelsysProcessed", "column": "processed_delsys", "role": "analysis"}
+        ]
+      },
+      {
+        "key": "cosmed",
+        "label": "Cosmed",
+        "stages": [
+          {"key": "raw", "label": "RawFile", "table": "CosmedRawFile", "column": "raw_cosmed", "role": "raw"},
+          {"key": "processed", "label": "Processed", "table": "CosmedProcessed", "column": "processed_cosmed", "role": "analysis"}
+        ]
+      },
+      {
+        "key": "afo",
+        "label": "AFO",
+        "stages": [
+          {"key": "raw", "label": "RawFile", "table": "AfoRawFile", "column": "raw_afo", "role": "raw"},
+          {"key": "processed", "label": "Processed", "table": "AfoProcessed", "column": "processed_afo", "role": "analysis"}
+        ]
+      }
+    ]
+  }
+}

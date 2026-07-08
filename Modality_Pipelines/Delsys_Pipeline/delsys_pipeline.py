@@ -1,19 +1,12 @@
-"""
-SciStack wrappers for Delsys processing stages.
-
-@author shensley01
-@version 0.2.0
-@last_updated 2026-07-06
-@change_log
-    - 2026-07-06 v0.2.0: Routed Delsys stage through shared SciStack runner
-      with schema_filter/schema_level, track_lineage=True, and skip_computed=True.
-    - 2026-07-02 v0.1.0: Added Delsys SciDB for_each wrapper scaffold.
-"""
+"""SciStack wrappers for Delsys processing stages."""
 
 from __future__ import annotations
 
-from Modality_Pipelines.common.table_registry import get_processed_tables, get_raw_file_table
+import sys
+
+from Modality_Pipelines.common.manifest import register_raw_files
 from Modality_Pipelines.common.scistack_runner import run_scistack_stage, split_stage_kwargs
+from Modality_Pipelines.common.table_registry import get_processed_tables, get_raw_file_table
 from Modality_Pipelines.Delsys_Pipeline.process_delsys import process_delsys_raw_file
 
 
@@ -23,11 +16,26 @@ def run_delsys_processing(**schema_filters):
     schema_filters, stage_options = split_stage_kwargs(schema_filters)
     return run_scistack_stage(
         process_delsys_raw_file,
-        inputs={
-            "raw_file_record": get_raw_file_table(study, "delsys"),
-        },
+        inputs={"raw_file_record": get_raw_file_table(study, "delsys")},
         outputs=get_processed_tables(study, "delsys"),
         schema_filters=schema_filters,
         study=study,
         **stage_options,
     )
+
+
+def main():
+    """Register valid Delsys files and run Delsys processing with R2 defaults."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
+
+    counts = register_raw_files(modality_keys=["delsys"], study="R2")
+    print(f"Delsys raw-file registration: {counts}")
+    return run_delsys_processing(study="R2")
+
+
+if __name__ == "__main__":
+    main()
