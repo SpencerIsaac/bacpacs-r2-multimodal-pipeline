@@ -4,6 +4,8 @@ This file is the project-level changelog for pipeline infrastructure changes. Pe
 
 ## 2026-07-08
 
+- Added full-pipeline integration branch CLI scaffolding with `bacpacs` commands for GUI launch, study listing, validation, registration, processing, status, and analysis discovery.
+- Added `scripts/full_pipeline_smoke.py` for mock end-to-end validation/registration/dispatch checks.
 - Added backend R1/R2 study namespace routing.
 - Renamed the R2 SciDB table namespace to `r2_scidb_tables.py` and added parallel R1 table definitions in `r1_scidb_tables.py`.
 - Added `study_config.py` for study-specific participant prefixes, visit maps, modality maps, subject-data roots, filename patterns, and database paths.
