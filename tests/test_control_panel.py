@@ -110,3 +110,12 @@ class ControlPanelLedgerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_control_panel_nav_icons_are_valid_streamlit_material_icons():
+    from streamlit.string_util import validate_icon_or_emoji
+
+    from Modality_Pipelines.control_panel.app import NAV_ICONS
+
+    for icon in NAV_ICONS.values():
+        assert validate_icon_or_emoji(icon) == icon

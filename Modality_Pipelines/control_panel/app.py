@@ -39,8 +39,8 @@ DISPLAY_MODALITIES = {
 }
 
 NAV_ICONS = {
-    "Processing ledger": ":material/checklist_rtl:",
-    "Raw file review": ":material/file_search:",
+    "Processing ledger": ":material/checklist:",
+    "Raw file review": ":material/search:",
     "Configuration": ":material/tune:",
     "Lineage / records": ":material/account_tree:",
 }
