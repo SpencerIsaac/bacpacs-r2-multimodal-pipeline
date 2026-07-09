@@ -4,6 +4,7 @@ This file is the project-level changelog for pipeline infrastructure changes. Pe
 
 ## 2026-07-09
 
+- Locked R1 backend visit validation to the actual `2. Mid-Test` directory naming used in Subject Data.
 - Optimized Streamlit control-panel startup and rerun behavior with lazy pipeline imports, lightweight ledger table routing, and cached DB/config reads.
 - Added study-level Streamlit cache warming so ledger, configuration, and lineage data are preloaded after study selection before users navigate to those pages.
 - Added network-friendly repo launchers and a `bacpacs doctor` command for quick loading from shared-drive lab computers without PATH setup.

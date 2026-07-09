@@ -14,6 +14,7 @@ def test_r1_and_r2_study_configs_load():
     assert r1.participant_prefix == "R1"
     assert r1.participant_glob == "R1_*"
     assert r1.visits["baseline"]["folder"] == "1. Baseline"
+    assert r1.visits["mid_test"]["folder"] == "2. Mid-Test"
     assert r1.visits["mid_test"]["file_code"] == "MP"
     assert r1.modalities["afo"]["folder"] == "AFO Data"
 
@@ -67,12 +68,17 @@ def test_validate_raw_file_accepts_correct_r1_and_r2_layouts(tmp_path: Path):
     r2_folder = r2_root / "R2_001" / "2. Baseline" / "Delsys"
     r1_folder.mkdir(parents=True)
     r2_folder.mkdir(parents=True)
+    r1_mid_folder = r1_root / "R1_001" / "2. Mid-Test" / "Delsys"
+    r1_mid_folder.mkdir(parents=True)
     r1_file = r1_folder / "R1_001_BL_delsys_SSV1_noAFO.mat"
+    r1_mid_file = r1_mid_folder / "R1_001_MP_delsys_SSV2_noAFO.mat"
     r2_file = r2_folder / "R2_001_BL_delsys_SSV1_noAFO.mat"
     r1_file.write_text("mock")
+    r1_mid_file.write_text("mock")
     r2_file.write_text("mock")
 
     r1_record = validate_raw_file(r1_file, r1_root, study="R1")
+    r1_mid_record = validate_raw_file(r1_mid_file, r1_root, study="R1")
     r2_record = validate_raw_file(r2_file, r2_root, study="R2")
 
     assert r1_record.status == "valid"
@@ -82,6 +88,10 @@ def test_validate_raw_file_accepts_correct_r1_and_r2_layouts(tmp_path: Path):
     assert r1_record.test == "10MWT"
     assert r1_record.speed == "SSV"
     assert r1_record.trial == "1"
+
+    assert r1_mid_record.status == "valid"
+    assert r1_mid_record.visit == "MP"
+    assert r1_mid_record.trial == "2"
 
     assert r2_record.status == "valid"
     assert r2_record.participant_number == "001"
