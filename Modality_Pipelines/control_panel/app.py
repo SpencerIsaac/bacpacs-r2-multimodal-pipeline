@@ -79,6 +79,21 @@ def cached_lineage_records(study: str, refresh_token: int):
     return get_lineage_records(study=study)
 
 
+def warm_selected_study_caches() -> None:
+    """Preload page-level data after a study is selected."""
+    study = selected_study()
+    refresh_token = st.session_state["refresh_token"]
+    warm_key = f"{study}:{refresh_token}"
+    if st.session_state.get("cache_warm_key") == warm_key:
+        return
+
+    cached_ledger_stage_map(study)
+    cached_processing_ledger(study, refresh_token)
+    cached_config_state(study, refresh_token)
+    cached_lineage_records(study, refresh_token)
+    st.session_state["cache_warm_key"] = warm_key
+
+
 def main() -> None:
     _inject_css()
     if "page" not in st.session_state:
@@ -89,6 +104,8 @@ def main() -> None:
         st.session_state["selected_study"] = None
     if "refresh_token" not in st.session_state:
         st.session_state["refresh_token"] = 0
+    if "cache_warm_key" not in st.session_state:
+        st.session_state["cache_warm_key"] = None
 
     render_top_bar()
     if not st.session_state.get("selected_study"):
@@ -105,6 +122,8 @@ def main() -> None:
         render_configuration()
     elif page == "Lineage / records":
         render_lineage()
+
+    warm_selected_study_caches()
 
 
 def selected_study() -> str:
@@ -170,6 +189,7 @@ def render_sidebar() -> None:
             st.session_state["selected_study"] = study_choice
             st.session_state.pop("manifest", None)
             st.session_state.pop("registration_result", None)
+            st.session_state["cache_warm_key"] = None
             st.rerun()
         for page in PAGES:
             active = st.session_state.get("page") == page
@@ -186,7 +206,10 @@ def render_ledger() -> None:
         if st.button("Refresh", use_container_width=True):
             st.session_state["refresh_token"] += 1
             cached_processing_ledger.clear()
+            cached_config_state.clear()
+            cached_lineage_records.clear()
             cached_ledger_stage_map.clear()
+            st.session_state["cache_warm_key"] = None
             st.rerun()
     stage_map = cached_ledger_stage_map(selected_study())
     ledger = cached_processing_ledger(selected_study(), st.session_state["refresh_token"])
@@ -264,6 +287,9 @@ def render_raw_file_review() -> None:
             )
             st.session_state["refresh_token"] += 1
             cached_processing_ledger.clear()
+            cached_config_state.clear()
+            cached_lineage_records.clear()
+            st.session_state["cache_warm_key"] = None
             st.session_state["registration_result"] = counts
             st.success(f"Registered {counts.get('registered', 0)} files; skipped {counts.get('skipped', 0)}.")
     else:
