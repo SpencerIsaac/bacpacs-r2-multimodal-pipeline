@@ -119,3 +119,29 @@ def test_control_panel_nav_icons_are_valid_streamlit_material_icons():
 
     for icon in NAV_ICONS.values():
         assert validate_icon_or_emoji(icon) == icon
+
+
+def test_apply_study_selection_updates_segment_and_clears_study_state():
+    import streamlit as st
+
+    from Modality_Pipelines.control_panel.app import apply_study_selection
+
+    original = dict(st.session_state)
+    st.session_state.clear()
+    try:
+        st.session_state["selected_study"] = "R2"
+        st.session_state["study_segment"] = "R2"
+        st.session_state["manifest"] = object()
+        st.session_state["registration_result"] = {"registered": 1}
+        st.session_state["cache_warm_key"] = "R2:0"
+
+        assert apply_study_selection("R1") is True
+        assert st.session_state["selected_study"] == "R1"
+        assert st.session_state["study_segment"] == "R1"
+        assert "manifest" not in st.session_state
+        assert "registration_result" not in st.session_state
+        assert st.session_state["cache_warm_key"] is None
+        assert apply_study_selection("R1") is False
+    finally:
+        st.session_state.clear()
+        st.session_state.update(original)

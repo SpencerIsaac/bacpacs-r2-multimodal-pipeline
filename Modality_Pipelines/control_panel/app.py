@@ -138,6 +138,18 @@ def selected_study() -> str:
     return st.session_state.get("selected_study") or "R2"
 
 
+def apply_study_selection(study_choice: str | None) -> bool:
+    """Apply a sidebar study change and clear study-scoped UI state."""
+    if not study_choice or study_choice == selected_study():
+        return False
+    st.session_state["selected_study"] = study_choice
+    st.session_state["study_segment"] = study_choice
+    st.session_state.pop("manifest", None)
+    st.session_state.pop("registration_result", None)
+    st.session_state["cache_warm_key"] = None
+    return True
+
+
 def render_top_bar() -> None:
     study = st.session_state.get("selected_study")
     if study:
@@ -178,13 +190,14 @@ def render_study_gate() -> None:
             )
             if st.button(f"Open {study_key}", key=f"open_{study_key}", type="primary", use_container_width=True):
                 st.session_state["selected_study"] = study_key
+                st.session_state["study_segment"] = study_key
                 st.rerun()
 
 
 def render_sidebar() -> None:
     with st.sidebar:
         cfg = cached_study_summary(selected_study())
-        if st.session_state.get("study_segment") != selected_study():
+        if "study_segment" not in st.session_state:
             st.session_state["study_segment"] = selected_study()
 
         st.markdown(
@@ -204,11 +217,7 @@ def render_sidebar() -> None:
             label_visibility="collapsed",
             width="stretch",
         )
-        if study_choice and study_choice != selected_study():
-            st.session_state["selected_study"] = study_choice
-            st.session_state.pop("manifest", None)
-            st.session_state.pop("registration_result", None)
-            st.session_state["cache_warm_key"] = None
+        if apply_study_selection(study_choice):
             st.rerun()
 
         st.markdown("<div class='drawer-nav'>", unsafe_allow_html=True)
