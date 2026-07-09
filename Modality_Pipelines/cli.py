@@ -44,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("studies", help="List configured studies.")
 
+    doctor = subparsers.add_parser("doctor", help="Check this computer's network/repo environment.")
+    doctor.add_argument("--study", choices=get_supported_studies(), help="Optional study namespace to check.")
+
     gui = subparsers.add_parser("gui", help="Launch the Streamlit control panel.")
     gui.add_argument("streamlit_args", nargs=argparse.REMAINDER, help="Extra arguments passed to Streamlit.")
 
@@ -125,6 +128,41 @@ def _cmd_studies(args: argparse.Namespace) -> int:
         print(f"  {config.study}: {config.project_name}")
         print(f"      subject_data_root: {config.subject_data_root}")
         print(f"      database_path: {config.database_path}")
+    return 0
+
+
+def _format_path_status(path: Path) -> str:
+    return "ok" if path.exists() else "missing"
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    from Modality_Pipelines.common.study_config import load_study_config
+
+    repo_root = Path(__file__).resolve().parents[1]
+    env_candidates = [
+        repo_root / "BACPACS_env" / "python.exe",
+        repo_root / "BACPACS_env" / "Scripts" / "python.exe",
+        repo_root / "BAKPACS_env" / "python.exe",
+        repo_root / "BAKPACS_env" / "Scripts" / "python.exe",
+    ]
+    env_python = next((candidate for candidate in env_candidates if candidate.exists()), None)
+
+    print("BACPACS environment check")
+    print(f"python: {sys.executable}")
+    print(f"repo_root: {repo_root} [{_format_path_status(repo_root)}]")
+    if env_python:
+        print(f"repo_env_python: {env_python} [ok]")
+    else:
+        print("repo_env_python: missing")
+
+    studies = [args.study] if args.study else get_supported_studies()
+    for study in studies:
+        config = load_study_config(study)
+        database_parent = config.database_path.parent
+        print(f"{config.study}: {config.project_name}")
+        print(f"  subject_data_root: {config.subject_data_root} [{_format_path_status(config.subject_data_root)}]")
+        print(f"  database_path: {config.database_path} [{_format_path_status(config.database_path)}]")
+        print(f"  database_folder: {database_parent} [{_format_path_status(database_parent)}]")
     return 0
 
 
@@ -242,6 +280,7 @@ def dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     _require_study(args, parser)
     handlers = {
         "studies": _cmd_studies,
+        "doctor": _cmd_doctor,
         "gui": _cmd_gui,
         "validate": _cmd_validate,
         "register": _cmd_register,

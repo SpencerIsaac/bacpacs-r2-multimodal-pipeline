@@ -24,3 +24,9 @@ def test_studies_command_does_not_require_study(capsys):
     parser, args = parse_args("studies")
     assert dispatch(args, parser) == 0
     assert "Configured studies" in capsys.readouterr().out
+
+
+def test_doctor_command_does_not_require_study(capsys):
+    parser, args = parse_args("doctor")
+    assert dispatch(args, parser) == 0
+    assert "BACPACS environment check" in capsys.readouterr().out
