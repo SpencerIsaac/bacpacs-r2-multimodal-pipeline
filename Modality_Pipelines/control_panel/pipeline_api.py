@@ -5,22 +5,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from Modality_Pipelines.common.manifest import build_raw_file_manifest, register_raw_files
-from Modality_Pipelines.common.processing import run_modality_processing as run_backend_modality_processing
-
-
 def register_all_raw_files(**kwargs) -> dict[str, int]:
     """Register all valid raw files discovered by the shared manifest."""
+    from Modality_Pipelines.common.manifest import register_raw_files
+
     return register_raw_files(**kwargs)
 
 
 def preview_raw_file_manifest(**kwargs):
     """Build the dry-run manifest used by Raw File Review."""
+    from Modality_Pipelines.common.manifest import build_raw_file_manifest
+
     return build_raw_file_manifest(**kwargs)
 
 
 def run_modality_processing(modality: str, **schema_filters):
     """Run one modality through the shared backend processing dispatcher."""
+    from Modality_Pipelines.common.processing import run_modality_processing as run_backend_modality_processing
+
     return run_backend_modality_processing(modality=modality, **schema_filters)
 
 

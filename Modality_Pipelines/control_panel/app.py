@@ -7,22 +7,11 @@ Run from the Pipeline_development folder:
 from __future__ import annotations
 
 from datetime import datetime
+import math
 
-import pandas as pd
 import streamlit as st
 
 from Modality_Pipelines.common.study_config import load_study_config
-from Modality_Pipelines.control_panel.db_service import (
-    build_processing_ledger,
-    get_ledger_stage_map,
-    get_config_state,
-    get_lineage_records,
-)
-from Modality_Pipelines.control_panel.pipeline_api import (
-    preview_raw_file_manifest,
-    register_all_raw_files,
-)
-
 
 st.set_page_config(page_title="BACPACS control", layout="wide")
 
@@ -50,6 +39,46 @@ DISPLAY_MODALITIES = {
 }
 
 
+@st.cache_data(show_spinner=False)
+def cached_study_summary(study: str) -> dict[str, str]:
+    cfg = load_study_config(study)
+    return {
+        "study": cfg.study,
+        "project_name": cfg.project_name,
+        "subject_data_root": str(cfg.subject_data_root),
+        "database_path": str(cfg.database_path),
+    }
+
+
+@st.cache_data(ttl=10, show_spinner=False)
+def cached_ledger_stage_map(study: str) -> list[dict]:
+    from Modality_Pipelines.control_panel.db_service import get_ledger_stage_map
+
+    return get_ledger_stage_map(study=study)
+
+
+@st.cache_data(ttl=10, show_spinner="Loading processing ledger...")
+def cached_processing_ledger(study: str, refresh_token: int):
+    from Modality_Pipelines.control_panel.db_service import build_processing_ledger
+
+    stage_map = cached_ledger_stage_map(study)
+    return build_processing_ledger(stage_map=stage_map, study=study)
+
+
+@st.cache_data(ttl=30, show_spinner="Loading configuration...")
+def cached_config_state(study: str, refresh_token: int):
+    from Modality_Pipelines.control_panel.db_service import get_config_state
+
+    return get_config_state(study=study)
+
+
+@st.cache_data(ttl=10, show_spinner="Loading lineage records...")
+def cached_lineage_records(study: str, refresh_token: int):
+    from Modality_Pipelines.control_panel.db_service import get_lineage_records
+
+    return get_lineage_records(study=study)
+
+
 def main() -> None:
     _inject_css()
     if "page" not in st.session_state:
@@ -58,6 +87,8 @@ def main() -> None:
         st.session_state["selected_modalities"] = list(MODALITIES)
     if "selected_study" not in st.session_state:
         st.session_state["selected_study"] = None
+    if "refresh_token" not in st.session_state:
+        st.session_state["refresh_token"] = 0
 
     render_top_bar()
     if not st.session_state.get("selected_study"):
@@ -84,9 +115,9 @@ def selected_study() -> str:
 def render_top_bar() -> None:
     study = st.session_state.get("selected_study")
     if study:
-        cfg = load_study_config(study)
-        brand = cfg.project_name
-        db_path = str(cfg.database_path)
+        cfg = cached_study_summary(study)
+        brand = cfg["project_name"]
+        db_path = cfg["database_path"]
         path_text = _truncate_path(db_path, 62)
     else:
         brand = "BACPACS control"
@@ -106,15 +137,15 @@ def render_top_bar() -> None:
 def render_study_gate() -> None:
     st.header("Select study")
     cols = st.columns(2)
-    studies = [("R1", load_study_config("R1")), ("R2", load_study_config("R2"))]
+    studies = [("R1", cached_study_summary("R1")), ("R2", cached_study_summary("R2"))]
     for col, (study_key, cfg) in zip(cols, studies):
         with col:
             st.markdown(
                 f"""
                 <section class="study-card">
                     <div class="study-card__key">{study_key}</div>
-                    <div class="study-card__title">{cfg.project_name}</div>
-                    <div class="study-card__path">{_truncate_path(str(cfg.subject_data_root), 80)}</div>
+                    <div class="study-card__title">{cfg["project_name"]}</div>
+                    <div class="study-card__path">{_truncate_path(cfg["subject_data_root"], 80)}</div>
                 </section>
                 """,
                 unsafe_allow_html=True,
@@ -126,9 +157,9 @@ def render_study_gate() -> None:
 
 def render_sidebar() -> None:
     with st.sidebar:
-        cfg = load_study_config(selected_study())
+        cfg = cached_study_summary(selected_study())
         st.markdown("<div class='sidebar-title'>BACPACS control</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='sidebar-caption'>{cfg.project_name}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='sidebar-caption'>{cfg['project_name']}</div>", unsafe_allow_html=True)
         study_choice = st.radio(
             "Study",
             options=["R1", "R2"],
@@ -150,9 +181,16 @@ def render_sidebar() -> None:
 
 def render_ledger() -> None:
     st.header("Processing ledger")
-    stage_map = get_ledger_stage_map(study=selected_study())
-    ledger = build_processing_ledger(stage_map=stage_map, study=selected_study())
-    st.caption(f"Database query as of {datetime.now().strftime('%H:%M:%S')}")
+    cols = st.columns([1, 5])
+    with cols[0]:
+        if st.button("Refresh", use_container_width=True):
+            st.session_state["refresh_token"] += 1
+            cached_processing_ledger.clear()
+            cached_ledger_stage_map.clear()
+            st.rerun()
+    stage_map = cached_ledger_stage_map(selected_study())
+    ledger = cached_processing_ledger(selected_study(), st.session_state["refresh_token"])
+    st.caption(f"Cached database view as of {datetime.now().strftime('%H:%M:%S')}. Refresh after running pipeline commands.")
 
     if ledger.empty:
         _empty_state("No registered raw or processed records were found in the SciDB database.")
@@ -190,6 +228,8 @@ def render_raw_file_review() -> None:
         st.rerun()
 
     if scan:
+        from Modality_Pipelines.control_panel.pipeline_api import preview_raw_file_manifest
+
         st.session_state["manifest"] = preview_raw_file_manifest(
             modality_keys=selected_modalities,
             study=selected_study(),
@@ -197,6 +237,8 @@ def render_raw_file_review() -> None:
         st.session_state.pop("registration_result", None)
 
     manifest = st.session_state.get("manifest")
+    import pandas as pd
+
     if not isinstance(manifest, pd.DataFrame):
         _empty_state("No scan results yet.")
         return
@@ -213,11 +255,15 @@ def render_raw_file_review() -> None:
 
     if valid_count:
         if st.button("Register valid files", type="primary"):
+            from Modality_Pipelines.control_panel.pipeline_api import register_all_raw_files
+
             counts = register_all_raw_files(
                 manifest_df=manifest,
                 only_valid=True,
                 study=selected_study(),
             )
+            st.session_state["refresh_token"] += 1
+            cached_processing_ledger.clear()
             st.session_state["registration_result"] = counts
             st.success(f"Registered {counts.get('registered', 0)} files; skipped {counts.get('skipped', 0)}.")
     else:
@@ -243,7 +289,7 @@ def render_raw_file_review() -> None:
 
 def render_configuration() -> None:
     st.header("Configuration")
-    config = get_config_state(study=selected_study())
+    config = cached_config_state(selected_study(), st.session_state["refresh_token"])
     if config.empty:
         _empty_state("No configuration rows were found.")
         return
@@ -300,7 +346,7 @@ def render_configuration() -> None:
 
 def render_lineage() -> None:
     st.header("Lineage / records")
-    lineage = get_lineage_records(study=selected_study())
+    lineage = cached_lineage_records(selected_study(), st.session_state["refresh_token"])
     if lineage.empty:
         _empty_state("No lineage records were found.")
         return
@@ -395,7 +441,7 @@ def _lane_status(row: pd.Series, raw_column: str, analysis_column: str) -> str:
 
 def _count(row: pd.Series, column: str) -> int:
     value = row.get(column, 0)
-    if pd.isna(value):
+    if value is None or (isinstance(value, float) and math.isnan(value)):
         return 0
     return int(value)
 

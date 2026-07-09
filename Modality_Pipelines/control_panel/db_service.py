@@ -16,8 +16,11 @@ import duckdb
 import pandas as pd
 
 from Modality_Pipelines.common.common_config import PIPELINE_ROOT
+from Modality_Pipelines.common.lightweight_registry import (
+    PROCESSED_TABLE_NAMES,
+    RAW_FILE_TABLE_NAMES,
+)
 from Modality_Pipelines.common.study_config import StudyConfig, load_study_config
-from Modality_Pipelines.common.table_registry import get_processed_tables, get_raw_file_table
 
 CONTROL_PANEL_CONFIG_PATH = Path(__file__).with_name("control_panel_config.json")
 
@@ -261,11 +264,11 @@ def _normalize_modality_config(modality: dict[str, Any], study_config: StudyConf
         stage_role = stage.get("role", "processed")
         resolved_stage = _normalize_stage_config(normalized["key"], stage)
         if stage_role == "raw":
-            resolved_stage["table"] = get_raw_file_table(study_config.study, normalized["key"]).__name__
+            resolved_stage["table"] = RAW_FILE_TABLE_NAMES[study_config.study][normalized["key"]]
         else:
-            processed_tables = get_processed_tables(study_config.study, normalized["key"])
+            processed_tables = PROCESSED_TABLE_NAMES[study_config.study][normalized["key"]]
             if processed_index < len(processed_tables):
-                resolved_stage["table"] = processed_tables[processed_index].__name__
+                resolved_stage["table"] = processed_tables[processed_index]
             processed_index += 1
         stages.append(resolved_stage)
     normalized["stages"] = stages

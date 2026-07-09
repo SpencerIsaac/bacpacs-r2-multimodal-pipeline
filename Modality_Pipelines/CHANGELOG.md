@@ -2,6 +2,10 @@
 
 This file is the project-level changelog for pipeline infrastructure changes. Per-file headers may exist for older modules, but this file is the source of truth for repo-level history.
 
+## 2026-07-09
+
+- Optimized Streamlit control-panel startup and rerun behavior with lazy pipeline imports, lightweight ledger table routing, and cached DB/config reads.
+
 ## 2026-07-08
 
 - Optimized CLI startup/status routing by separating lightweight table-name metadata from SciDB table-class imports.
