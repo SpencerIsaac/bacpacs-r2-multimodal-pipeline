@@ -13,12 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from Modality_Pipelines.common.scistack_runner import run_scistack_stage, split_stage_kwargs
 from Modality_Pipelines.common.study_config import load_study_config
-from Modality_Pipelines.common.table_registry import (
-    get_primary_processed_table,
-    get_table_class,
-)
 
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("analysis_registry.json")
 
@@ -67,6 +62,8 @@ def _normalize_study_mapping(value: Any, study: str, field_name: str) -> Any:
 
 
 def _resolve_input_table(study: str, entry: Mapping[str, Any]):
+    from Modality_Pipelines.common.table_registry import get_primary_processed_table, get_table_class
+
     if "input_table" in entry:
         table_name = _normalize_study_mapping(entry["input_table"], study, "input_table")
         return get_table_class(study, table_name)
@@ -82,6 +79,8 @@ def _resolve_input_table(study: str, entry: Mapping[str, Any]):
 
 
 def _resolve_output_tables(study: str, entry: Mapping[str, Any]) -> list[type]:
+    from Modality_Pipelines.common.table_registry import get_table_class
+
     if "output_tables" in entry:
         output_value = entry["output_tables"]
     elif "output_table" in entry:
@@ -95,6 +94,39 @@ def _resolve_output_tables(study: str, entry: Mapping[str, Any]) -> list[type]:
     else:
         output_names = list(output_value)
     return [get_table_class(study, table_name) for table_name in output_names]
+
+
+
+
+def _resolve_input_table_name(study: str, entry: Mapping[str, Any]) -> str:
+    if "input_table" in entry:
+        return str(_normalize_study_mapping(entry["input_table"], study, "input_table"))
+
+    input_stage = entry.get("input_stage", "processed")
+    if input_stage in {"processed", "primary_processed"}:
+        from Modality_Pipelines.common.lightweight_registry import PROCESSED_TABLE_NAMES
+
+        modality = str(entry["modality"]).lower()
+        return PROCESSED_TABLE_NAMES[study][modality][0]
+
+    raise ValueError(
+        "Analysis entries must define input_table or use input_stage='processed'. "
+        f"Got input_stage={input_stage!r}."
+    )
+
+
+def _resolve_output_table_names(study: str, entry: Mapping[str, Any]) -> list[str]:
+    if "output_tables" in entry:
+        output_value = entry["output_tables"]
+    elif "output_table" in entry:
+        output_value = entry["output_table"]
+    else:
+        raise ValueError("Analysis entry is missing output_table/output_tables")
+
+    output_value = _normalize_study_mapping(output_value, study, "output_table")
+    if isinstance(output_value, str):
+        return [output_value]
+    return [str(value) for value in output_value]
 
 
 def resolve_analysis_spec(
@@ -158,9 +190,9 @@ def list_available_analyses(
             "batch_enabled": bool(entry.get("batch_enabled", True)),
         }
         if study is not None:
-            spec = resolve_analysis_spec(study, name, registry_path=registry_path)
-            row["input_table"] = spec.input_table.__name__
-            row["output_tables"] = [table.__name__ for table in spec.output_tables]
+            study_key = load_study_config(study).study
+            row["input_table"] = _resolve_input_table_name(study_key, entry)
+            row["output_tables"] = _resolve_output_table_names(study_key, entry)
         rows.append(row)
     return sorted(rows, key=lambda item: (item["modality"], item["name"]))
 
@@ -187,6 +219,8 @@ def run_registered_analysis(
     """
     if not analysis:
         raise ValueError("analysis is required")
+
+    from Modality_Pipelines.common.scistack_runner import run_scistack_stage, split_stage_kwargs
 
     spec = resolve_analysis_spec(study, analysis, registry_path=registry_path)
     if not spec.batch_enabled:

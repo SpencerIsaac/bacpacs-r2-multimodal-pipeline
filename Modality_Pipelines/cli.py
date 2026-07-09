@@ -8,8 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from Modality_Pipelines.common.study_config import load_study_config
-from Modality_Pipelines.common.table_registry import get_stage_registry, get_supported_studies
+from Modality_Pipelines.common.lightweight_registry import get_stage_registry, get_supported_studies
 
 OPERATIONAL_COMMANDS = {"validate", "register", "process", "status", "analyses", "analyze"}
 
@@ -118,6 +117,8 @@ def _print_mapping(title: str, rows: dict[str, Any]) -> None:
 
 
 def _cmd_studies(args: argparse.Namespace) -> int:
+    from Modality_Pipelines.common.study_config import load_study_config
+
     print("Configured studies")
     for study in get_supported_studies():
         config = load_study_config(study)
@@ -188,6 +189,8 @@ def _cmd_process(args: argparse.Namespace) -> int:
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
+    from Modality_Pipelines.common.study_config import load_study_config
+
     config = load_study_config(args.study)
     print(f"{config.study}: {config.project_name}")
     print(f"subject_data_root: {config.subject_data_root}")

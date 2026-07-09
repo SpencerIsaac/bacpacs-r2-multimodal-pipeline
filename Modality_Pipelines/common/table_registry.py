@@ -6,6 +6,11 @@ from typing import Any
 
 from Modality_Pipelines.common import r1_scidb_tables as r1_tables
 from Modality_Pipelines.common import r2_scidb_tables as r2_tables
+from Modality_Pipelines.common.lightweight_registry import (
+    get_stage_registry as get_stage_table_names,
+    get_supported_modalities as get_supported_modalities_light,
+    get_supported_studies as get_supported_studies_light,
+)
 
 
 STUDY_TABLE_MODULES = {
@@ -62,13 +67,12 @@ def _normalize_modality(modality: str) -> str:
 
 def get_supported_studies() -> list[str]:
     """Return study namespaces known to the table registry."""
-    return sorted(RAW_FILE_TABLES)
+    return get_supported_studies_light()
 
 
 def get_supported_modalities(study: str) -> list[str]:
     """Return modalities with registered RawFile tables for a study."""
-    study_key = _normalize_study(study)
-    return sorted(RAW_FILE_TABLES[study_key])
+    return get_supported_modalities_light(study)
 
 
 def get_study_table_module(study: str) -> Any:
@@ -121,11 +125,4 @@ def get_primary_processed_table(study: str, modality: str):
 
 def get_stage_registry(study: str) -> dict[str, dict[str, Any]]:
     """Return raw and processed table names grouped by modality for status/CLI views."""
-    study_key = _normalize_study(study)
-    stage_map: dict[str, dict[str, Any]] = {}
-    for modality in get_supported_modalities(study_key):
-        stage_map[modality] = {
-            "raw_file": get_raw_file_table(study_key, modality).__name__,
-            "processed": [table.__name__ for table in get_processed_tables(study_key, modality)],
-        }
-    return stage_map
+    return get_stage_table_names(study)
