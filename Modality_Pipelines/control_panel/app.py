@@ -38,6 +38,13 @@ DISPLAY_MODALITIES = {
     "afo": "AFO",
 }
 
+NAV_ICONS = {
+    "Processing ledger": ":material/checklist_rtl:",
+    "Raw file review": ":material/file_search:",
+    "Configuration": ":material/tune:",
+    "Lineage / records": ":material/account_tree:",
+}
+
 
 @st.cache_data(show_spinner=False)
 def cached_study_summary(study: str) -> dict[str, str]:
@@ -177,26 +184,47 @@ def render_study_gate() -> None:
 def render_sidebar() -> None:
     with st.sidebar:
         cfg = cached_study_summary(selected_study())
-        st.markdown("<div class='sidebar-title'>BACPACS control</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='sidebar-caption'>{cfg['project_name']}</div>", unsafe_allow_html=True)
-        study_choice = st.radio(
-            "Study",
-            options=["R1", "R2"],
-            index=["R1", "R2"].index(selected_study()),
-            horizontal=True,
+        if st.session_state.get("study_segment") != selected_study():
+            st.session_state["study_segment"] = selected_study()
+
+        st.markdown(
+            f"""
+            <section class="drawer-card">
+                <div class="drawer-title">BACPACS control</div>
+                <div class="drawer-subtitle">{cfg['project_name']}</div>
+            </section>
+            """,
+            unsafe_allow_html=True,
         )
-        if study_choice != selected_study():
+        st.markdown("<div class='drawer-label'>Study revision</div>", unsafe_allow_html=True)
+        study_choice = st.segmented_control(
+            "Study revision",
+            options=["R1", "R2"],
+            key="study_segment",
+            label_visibility="collapsed",
+            width="stretch",
+        )
+        if study_choice and study_choice != selected_study():
             st.session_state["selected_study"] = study_choice
             st.session_state.pop("manifest", None)
             st.session_state.pop("registration_result", None)
             st.session_state["cache_warm_key"] = None
             st.rerun()
+
+        st.markdown("<div class='drawer-nav'>", unsafe_allow_html=True)
         for page in PAGES:
             active = st.session_state.get("page") == page
-            button_type = "primary" if active else "secondary"
-            if st.button(page, key=f"nav_{page}", use_container_width=True, type=button_type):
+            button_type = "primary" if active else "tertiary"
+            if st.button(
+                page,
+                key=f"nav_{page}",
+                use_container_width=True,
+                type=button_type,
+                icon=NAV_ICONS.get(page),
+            ):
                 st.session_state["page"] = page
                 st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_ledger() -> None:
@@ -680,24 +708,52 @@ def _inject_css() -> None:
         }
 
         [data-testid="stSidebar"] {
-            background: rgba(255, 255, 255, 0.82);
+            background: var(--canvas);
             border-right: 1px solid var(--hairline);
             box-shadow: none;
-            backdrop-filter: blur(20px);
             padding-top: 2.6rem;
         }
 
-        .sidebar-title {
-            color: var(--ink);
-            font-size: 0.875rem;
-            font-weight: 600;
-            margin: 0 0 0.1rem 0;
+        [data-testid="stSidebar"] > div:first-child {
+            padding: 1.35rem 1rem 1rem 1rem;
         }
 
-        .sidebar-caption,
+        .drawer-card {
+            background: var(--surface);
+            border: 1px solid var(--hairline);
+            border-radius: 9px;
+            box-shadow: var(--shadow-1);
+            margin: 0 0 1.05rem 0;
+            padding: 1.1rem 1rem 1rem 1rem;
+        }
+
+        .drawer-title {
+            color: var(--ink);
+            font-size: 1rem;
+            font-weight: 650;
+            line-height: 1.2;
+            margin: 0 0 0.25rem 0;
+        }
+
+        .drawer-subtitle,
         [data-testid="stCaptionContainer"] {
             color: var(--ink-secondary);
-            font-size: 0.8125rem;
+            font-size: 0.86rem;
+            font-weight: 450;
+            line-height: 1.25;
+        }
+
+        .drawer-label {
+            color: var(--ink-secondary);
+            font-size: 0.76rem;
+            font-weight: 650;
+            letter-spacing: 0;
+            margin: 0 0 0.35rem 0.1rem;
+            text-transform: uppercase;
+        }
+
+        .drawer-nav {
+            margin-top: 1.25rem;
         }
 
         .stButton > button {
@@ -727,21 +783,36 @@ def _inject_css() -> None:
         }
 
         [data-testid="stSidebar"] .stButton > button {
+            align-items: center;
             background: transparent;
-            border: none;
-            border-left: 3px solid transparent;
-            border-radius: 0;
+            border: 1px solid transparent;
+            border-radius: 7px;
             box-shadow: none;
             color: var(--ink);
+            font-size: 0.91rem;
+            font-weight: 600;
             justify-content: flex-start;
-            min-height: 2.25rem;
-            padding-left: 0.7rem;
+            min-height: 2.36rem;
+            padding: 0.45rem 0.7rem;
+            text-align: left;
+        }
+
+        [data-testid="stSidebar"] .stButton > button:hover {
+            background: #EEF4FF;
+            border-color: transparent;
+            color: #194F9A;
         }
 
         [data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
-            background: var(--accent-soft);
-            border-left-color: var(--accent);
-            color: var(--ink);
+            background: #D6E7FF;
+            border-color: transparent;
+            color: #194F9A;
+        }
+
+        [data-testid="stSidebar"] .stButton > button span[data-testid="stIconMaterial"] {
+            color: currentColor;
+            font-size: 1.05rem;
+            margin-right: 0.2rem;
         }
 
         .stat-row {
@@ -786,23 +857,35 @@ def _inject_css() -> None:
             overflow: hidden;
         }
 
-        div[data-baseweb="radio"] {
-            background: transparent;
+        [data-testid="stSidebar"] [data-testid="stSegmentedControl"] {
+            margin-bottom: 1.15rem;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stSegmentedControl"] div[role="radiogroup"] {
+            background: var(--surface);
             border: 1px solid var(--hairline);
-            border-radius: 999px;
+            border-radius: 7px;
             box-shadow: none;
-            display: inline-flex;
-            padding: 3px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            padding: 0;
+            width: 100%;
         }
 
-        div[data-baseweb="radio"] label {
-            border-radius: 999px;
-            padding: 0.2rem 0.6rem;
+        [data-testid="stSidebar"] [data-testid="stSegmentedControl"] label {
+            border-radius: 6px;
+            color: var(--ink-secondary);
+            font-size: 0.88rem;
+            font-weight: 650;
+            justify-content: center;
+            min-height: 2.1rem;
+            padding: 0.35rem 0.7rem;
         }
 
-        div[data-baseweb="radio"] label:has(input:checked) {
-            background: var(--accent-soft);
-            color: var(--accent);
+        [data-testid="stSidebar"] [data-testid="stSegmentedControl"] label:has(input:checked) {
+            background: #D6E7FF;
+            color: #194F9A;
         }
 
         input, textarea, [data-baseweb="input"] {
