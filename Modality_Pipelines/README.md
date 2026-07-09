@@ -1,5 +1,7 @@
 ﻿# BACPACS Modality Pipelines
 
+[![tests](https://github.com/SpencerIsaac/bacpacs-r2-multimodal-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/SpencerIsaac/bacpacs-r2-multimodal-pipeline/actions/workflows/tests.yml)
+
 @author shensley01
 @version 0.6.0
 @last_updated 2026-07-08
@@ -117,7 +119,4 @@ Which files match the SOP naming convention?
 Which files are in the wrong folder?
 Which participant/visit/modality/outcome combinations are ready to process?
 ```
-
-
-
 

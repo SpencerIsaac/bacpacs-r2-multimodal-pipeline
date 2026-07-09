@@ -8,8 +8,22 @@ version = "0.1.0"
 description = "BACPACS multimodal ambulation pipeline CLI and backend"
 requires-python = ">=3.11"
 dependencies = [
+    "duckdb",
+    "numpy",
+    "openpyxl",
     "pandas",
+    "scipy",
     "streamlit>=1.59,<2",
+    "scicanonicalhash @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=scicanonicalhash",
+    "scidb @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=scidb",
+    "sciduckdb @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=sciduckdb",
+    "scifor @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=scifor",
+    "scilineage @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=scilineage",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
 ]
 
 [project.scripts]

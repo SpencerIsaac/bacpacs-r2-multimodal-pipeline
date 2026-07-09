@@ -4,6 +4,7 @@ This file is the project-level changelog for pipeline infrastructure changes. Pe
 
 ## 2026-07-08
 
+- Added GitHub Actions CI for install, compile, pytest, CLI, and mock full-pipeline smoke checks.
 - Added full-pipeline integration branch CLI scaffolding with `bacpacs` commands for GUI launch, study listing, validation, registration, processing, status, and analysis discovery.
 - Added `scripts/full_pipeline_smoke.py` for mock end-to-end validation/registration/dispatch checks.
 - Added backend R1/R2 study namespace routing.
