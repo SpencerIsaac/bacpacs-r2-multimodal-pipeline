@@ -209,9 +209,9 @@ def render_sidebar() -> None:
             """,
             unsafe_allow_html=True,
         )
-        st.markdown("<div class='drawer-label'>Study revision</div>", unsafe_allow_html=True)
+        st.markdown("<div class='drawer-label'>BACPACS study</div>", unsafe_allow_html=True)
         study_choice = st.segmented_control(
-            "Study revision",
+            "BACPACS study",
             options=["R1", "R2"],
             key="study_segment",
             label_visibility="collapsed",
