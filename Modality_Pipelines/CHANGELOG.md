@@ -4,6 +4,7 @@ This file is the project-level changelog for pipeline infrastructure changes. Pe
 
 ## 2026-07-10
 
+- Replaced wide CLI validation table output with compact row summaries and optional CSV export.
 - Routed R1 and R2 study configurations to the same pipeline database while preserving separate table namespaces.
 
 ## 2026-07-09

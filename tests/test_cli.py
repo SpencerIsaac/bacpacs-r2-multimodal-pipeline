@@ -30,3 +30,34 @@ def test_doctor_command_does_not_require_study(capsys):
     parser, args = parse_args("doctor")
     assert dispatch(args, parser) == 0
     assert "BACPACS environment check" in capsys.readouterr().out
+
+def test_validate_output_uses_compact_manifest_summary(monkeypatch, capsys):
+    import pandas as pd
+    import Modality_Pipelines.common.manifest as manifest_module
+
+    manifest = pd.DataFrame(
+        [
+            {
+                "file_path": r"Y:\long\folder\R1_001\1. Baseline\Cosmed\bad file.xlsx",
+                "file_name": "bad file.xlsx",
+                "participant_number": None,
+                "visit": None,
+                "modality": None,
+                "test": None,
+                "condition": None,
+                "speed": None,
+                "trial": None,
+                "status": "review",
+                "issues": "filename: does not match pattern",
+            }
+        ]
+    )
+
+    monkeypatch.setattr(manifest_module, "validate_study_files", lambda **kwargs: manifest)
+    parser, args = parse_args("validate", "--study", "R1")
+    assert dispatch(args, parser) == 2
+    output = capsys.readouterr().out
+    assert "Manifest rows (showing 1 of 1)" in output
+    assert "identity: participant=?" in output
+    assert "filename: does not match pattern" in output
+    assert "file_path" not in output

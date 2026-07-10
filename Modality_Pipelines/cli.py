@@ -54,7 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_study(validate)
     _add_common_filters(validate)
     validate.add_argument("--root", help="Override subject-data root for this validation run.")
-    validate.add_argument("--limit", type=_positive_int, default=20, help="Rows to print from the validation manifest.")
+    validate.add_argument("--limit", type=_positive_int, default=20, help="Rows to summarize from the validation manifest.")
+    validate.add_argument("--output", help="Optional CSV path for the full validation manifest.")
 
     register = subparsers.add_parser("register", help="Register valid raw files in study RawFile tables.")
     _add_study(register)
@@ -174,20 +175,58 @@ def _cmd_gui(args: argparse.Namespace) -> int:
     return subprocess.call(command)
 
 
+def _display_manifest_value(value: Any, default: str = "?") -> Any:
+    if value is None or value != value:
+        return default
+    return value
+
+
+def _print_manifest_summary(df: Any, limit: int) -> None:
+    if not limit:
+        print("Manifest row summaries suppressed by --limit 0.")
+        return
+
+    rows = df.head(limit)
+    print(f"Manifest rows (showing {len(rows)} of {len(df)}):")
+    for display_index, (_, row) in enumerate(rows.iterrows(), start=1):
+        file_name = row.get("file_name") or "<missing file_name>"
+        status = row.get("status") or "<missing status>"
+        folder = row.get("file_path") or ""
+        participant = _display_manifest_value(row.get("participant_number"))
+        visit = _display_manifest_value(row.get("visit"))
+        modality = _display_manifest_value(row.get("modality"))
+        test = _display_manifest_value(row.get("test"))
+        condition = _display_manifest_value(row.get("condition"))
+        speed = _display_manifest_value(row.get("speed"))
+        trial = _display_manifest_value(row.get("trial"))
+        issues = row.get("issues") or "none"
+        print(f"  {display_index}. {status}: {file_name}")
+        print(f"     identity: participant={participant}, visit={visit}, modality={modality}, test={test}, condition={condition}, speed={speed}, trial={trial}")
+        print(f"     issues: {issues}")
+        if folder:
+            print(f"     path: {folder}")
+    remaining = len(df) - len(rows)
+    if remaining > 0:
+        print(f"  ... {remaining} additional row(s) hidden. Use --limit N or --output manifest.csv for full details.")
+
+
 def _cmd_validate(args: argparse.Namespace) -> int:
     from Modality_Pipelines.common.manifest import validate_study_files
 
     filters = _clean_filters(_filter_kwargs(args))
     df = validate_study_files(study=args.study, root=args.root, **filters)
     print(f"Validation manifest: {len(df)} row(s)")
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(output_path, index=False)
+        print(f"Full manifest written to: {output_path}")
     if df.empty:
         return 0
     status_counts = df["status"].value_counts(dropna=False).to_dict()
     _print_mapping("Status counts", status_counts)
-    if args.limit:
-        print(df.head(args.limit).to_string(index=False))
+    _print_manifest_summary(df, args.limit)
     return 0 if not (df["status"] == "review").any() else 2
-
 
 def _cmd_register(args: argparse.Namespace) -> int:
     from Modality_Pipelines.common.manifest import register_raw_files
@@ -312,4 +351,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
