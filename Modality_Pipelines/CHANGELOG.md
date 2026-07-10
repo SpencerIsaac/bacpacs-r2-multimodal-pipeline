@@ -2,6 +2,10 @@
 
 This file is the project-level changelog for pipeline infrastructure changes. Per-file headers may exist for older modules, but this file is the source of truth for repo-level history.
 
+## 2026-07-10
+
+- Routed R1 and R2 study configurations to the same pipeline database while preserving separate table namespaces.
+
 ## 2026-07-09
 
 - Locked R1 backend visit validation to the actual `2. Mid-Test` directory naming used in Subject Data.

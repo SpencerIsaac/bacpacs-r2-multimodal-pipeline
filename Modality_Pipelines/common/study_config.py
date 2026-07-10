@@ -57,7 +57,6 @@ def _study_dict(study: str, config_path: str | Path | None = None) -> dict:
         config["metadata"]["project_name"] = "BACPACS R1 Smart AFO"
         config["project"]["project_root"] = r"Y:\BACPACS R1 - Smart AFO"
         config["project"]["subject_data_root"] = r"Y:\BACPACS R1 - Smart AFO\Subject Data"
-        config["project"]["database_path"] = "Y:/BACPACS R2 - Spinal Stim/Pipeline_development/bacpacs_pipeline.duckdb"
         config["file_naming"]["pattern"] = "R1_{participant_number}_{visit}_{modality}_{outcome}"
         config["file_naming"]["participant_folder_template"] = "R1_{participant_number}"
         config["visits"] = R1_VISITS
