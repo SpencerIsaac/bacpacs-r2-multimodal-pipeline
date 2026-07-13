@@ -61,3 +61,19 @@ def test_validate_output_uses_compact_manifest_summary(monkeypatch, capsys):
     assert "identity: participant=?" in output
     assert "filename: does not match pattern" in output
     assert "file_path" not in output
+
+def test_help_shows_command_usage(capsys):
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--help"])
+    output = capsys.readouterr().out
+    assert "usage: bacpacs <command> [options]" in output
+    assert "bacpacs validate --study R2" in output
+
+
+def test_validate_help_shows_full_command_usage(capsys):
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["validate", "--help"])
+    output = capsys.readouterr().out
+    assert "usage: bacpacs validate --study {R1,R2} [filters] [options]" in output

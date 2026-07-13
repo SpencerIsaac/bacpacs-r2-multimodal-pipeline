@@ -38,9 +38,19 @@ def _positive_int(value: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="bacpacs",
+        usage="bacpacs <command> [options]",
         description="BACPACS multimodal ambulation pipeline CLI.",
+        epilog=(
+            "Examples:\n"
+            "  bacpacs doctor\n"
+            "  bacpacs validate --study R2\n"
+            "  bacpacs register --study R2 --dry-run\n"
+            "  bacpacs process --study R2 --modality all\n"
+            "  bacpacs status --study R2"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", metavar="<command>")
 
     subparsers.add_parser("studies", help="List configured studies.")
 
@@ -50,14 +60,14 @@ def build_parser() -> argparse.ArgumentParser:
     gui = subparsers.add_parser("gui", help="Launch the Streamlit control panel.")
     gui.add_argument("streamlit_args", nargs=argparse.REMAINDER, help="Extra arguments passed to Streamlit.")
 
-    validate = subparsers.add_parser("validate", help="Dry-run validate raw-file layout and filenames.")
+    validate = subparsers.add_parser("validate", usage="bacpacs validate --study {R1,R2} [filters] [options]", help="Dry-run validate raw-file layout and filenames.")
     _add_study(validate)
     _add_common_filters(validate)
     validate.add_argument("--root", help="Override subject-data root for this validation run.")
     validate.add_argument("--limit", type=_positive_int, default=20, help="Rows to summarize from the validation manifest.")
     validate.add_argument("--output", help="Optional CSV path for the full validation manifest.")
 
-    register = subparsers.add_parser("register", help="Register valid raw files in study RawFile tables.")
+    register = subparsers.add_parser("register", usage="bacpacs register --study {R1,R2} [filters] [--dry-run] [options]", help="Register valid raw files in study RawFile tables.")
     _add_study(register)
     _add_common_filters(register)
     register.add_argument("--root", help="Override subject-data root for this registration run.")
@@ -65,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("--database-path", help="Override the SciDB/DuckDB database path.")
     register.add_argument("--update-existing", action="store_true", help="Reserved for future idempotent updates.")
 
-    process = subparsers.add_parser("process", help="Run first-pass modality processing.")
+    process = subparsers.add_parser("process", usage="bacpacs process --study {R1,R2} --modality <modality|all> [filters] [options]", help="Run first-pass modality processing.")
     _add_study(process)
     _add_common_filters(process, include_modality=False)
     process.add_argument("--modality", default="all", help="Modality to process, or 'all'.")
@@ -74,14 +84,14 @@ def build_parser() -> argparse.ArgumentParser:
     process.add_argument("--overwrite", action="store_true", help="Recompute even if outputs already exist.")
     process.add_argument("--include-processed", action="store_true", help="Do not skip already computed records.")
 
-    status = subparsers.add_parser("status", help="Show study table/stage registry.")
+    status = subparsers.add_parser("status", usage="bacpacs status --study {R1,R2}", help="Show study table/stage registry.")
     _add_study(status)
 
-    analyses = subparsers.add_parser("analyses", help="List registered downstream analyses.")
+    analyses = subparsers.add_parser("analyses", usage="bacpacs analyses --study {R1,R2} [--modality <modality>]", help="List registered downstream analyses.")
     _add_study(analyses)
     analyses.add_argument("--modality", help="Filter analyses by modality.")
 
-    analyze = subparsers.add_parser("analyze", help="Run a registry-defined downstream analysis.")
+    analyze = subparsers.add_parser("analyze", usage="bacpacs analyze --study {R1,R2} --analysis <name> [filters] [options]", help="Run a registry-defined downstream analysis.")
     _add_study(analyze)
     _add_common_filters(analyze, include_modality=False)
     analyze.add_argument("--analysis", required=True, help="Analysis registry key to run.")
