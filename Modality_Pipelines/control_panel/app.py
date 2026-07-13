@@ -23,6 +23,7 @@ STATUS_COLORS = {
 }
 
 PAGES = [
+    "Pipeline workflow",
     "Processing ledger",
     "Raw file review",
     "Configuration",
@@ -39,6 +40,7 @@ DISPLAY_MODALITIES = {
 }
 
 NAV_ICONS = {
+    "Pipeline workflow": ":material/play_circle:",
     "Processing ledger": ":material/checklist:",
     "Raw file review": ":material/search:",
     "Configuration": ":material/tune:",
@@ -121,7 +123,9 @@ def main() -> None:
     render_sidebar()
 
     page = st.session_state["page"]
-    if page == "Processing ledger":
+    if page == "Pipeline workflow":
+        render_pipeline_workflow()
+    elif page == "Processing ledger":
         render_ledger()
     elif page == "Raw file review":
         render_raw_file_review()
@@ -146,6 +150,8 @@ def apply_study_selection(study_choice: str | None) -> bool:
     st.session_state["study_segment"] = study_choice
     st.session_state.pop("manifest", None)
     st.session_state.pop("registration_result", None)
+    st.session_state.pop("workflow_result", None)
+    st.session_state.pop("workflow_manifest", None)
     st.session_state["cache_warm_key"] = None
     return True
 
@@ -236,6 +242,152 @@ def render_sidebar() -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
 
+
+def render_pipeline_workflow() -> None:
+    st.header("Pipeline workflow")
+    st.caption("Run the same backend actions exposed by the BACPACS CLI. Preview steps are read-only; write steps require confirmation.")
+
+    filters = _workflow_filters()
+    _render_filter_summary(filters)
+
+    setup_tab, validate_tab, register_tab, process_tab, analysis_tab, status_tab = st.tabs(
+        ["Setup check", "Validate", "Register", "Process", "Analyze", "Status"]
+    )
+
+    with setup_tab:
+        st.markdown("#### Setup check")
+        st.caption("Mirrors `bacpacs doctor` for the selected study and shared repository environment.")
+        if st.button("Run setup check", type="primary", key="workflow_doctor"):
+            st.session_state["workflow_result"] = ("Setup check", _doctor_rows(selected_study()))
+        result = st.session_state.get("workflow_result")
+        if result and result[0] == "Setup check":
+            import pandas as pd
+
+            st.dataframe(pd.DataFrame(result[1]), use_container_width=True, hide_index=True)
+
+    with validate_tab:
+        st.markdown("#### Dry-run validation")
+        st.caption("Mirrors `bacpacs validate`. This scans filenames and folder locations without writing to the database.")
+        if st.button("Validate files", type="primary", key="workflow_validate"):
+            from Modality_Pipelines.common.manifest import validate_study_files
+
+            with st.spinner("Validating raw files..."):
+                manifest = validate_study_files(study=selected_study(), **filters)
+            st.session_state["workflow_manifest"] = manifest
+            st.session_state["workflow_result"] = ("Validate", _status_counts(manifest))
+        manifest = st.session_state.get("workflow_manifest")
+        if manifest is not None:
+            _render_validation_manifest(manifest)
+
+    with register_tab:
+        st.markdown("#### RawFile registration")
+        st.caption("Mirrors `bacpacs register`. Dry-run previews are read-only; registration writes RawFile records for valid new files.")
+        cols = st.columns([1, 1, 3])
+        with cols[0]:
+            preview = st.button("Preview registration", type="primary", key="workflow_register_preview", use_container_width=True)
+        with cols[1]:
+            confirm_register = st.checkbox("Confirm write", key="workflow_confirm_register")
+        with cols[2]:
+            write = st.button(
+                "Register valid files",
+                key="workflow_register_write",
+                disabled=not confirm_register,
+                use_container_width=False,
+            )
+        if preview or write:
+            from Modality_Pipelines.common.manifest import register_raw_files
+
+            with st.spinner("Preparing registration..." if preview else "Registering raw files..."):
+                counts = register_raw_files(study=selected_study(), dry_run=preview, **filters)
+            mode = "Registration preview" if preview else "Registration write"
+            st.session_state["workflow_result"] = (mode, counts)
+            if write:
+                _refresh_database_caches()
+        _render_workflow_result(["Registration preview", "Registration write"])
+
+    with process_tab:
+        st.markdown("#### First-pass modality processing")
+        st.caption("Mirrors `bacpacs process`. Processors read registered RawFile records and write processed tables.")
+        process_cols = st.columns([1.2, 1, 1, 2])
+        with process_cols[0]:
+            process_modality = st.selectbox("Modality", ["all", *MODALITIES], key="workflow_process_modality")
+        with process_cols[1]:
+            overwrite = st.checkbox("Overwrite", key="workflow_process_overwrite")
+        with process_cols[2]:
+            confirm_process = st.checkbox("Confirm write", key="workflow_confirm_process")
+        with process_cols[3]:
+            preview_process = st.button("Preview processing", type="primary", key="workflow_process_preview")
+            run_process = st.button("Run processing", key="workflow_process_run", disabled=not confirm_process)
+        if preview_process or run_process:
+            from Modality_Pipelines.common.processing import run_modality_processing
+
+            with st.spinner("Planning processing..." if preview_process else "Running processing..."):
+                result = run_modality_processing(
+                    study=selected_study(),
+                    modality=process_modality,
+                    dry_run=preview_process,
+                    overwrite=overwrite,
+                    **_filters_without_modality(filters),
+                )
+            mode = "Processing preview" if preview_process else "Processing write"
+            st.session_state["workflow_result"] = (mode, result)
+            if run_process:
+                _refresh_database_caches()
+        _render_workflow_result(["Processing preview", "Processing write"])
+
+    with analysis_tab:
+        st.markdown("#### Downstream analysis")
+        st.caption("Mirrors `bacpacs analyses` and `bacpacs analyze`. Analyses are discovered from the runtime registry and read processed tables only.")
+        from Modality_Pipelines.common.analysis_registry import list_available_analyses
+
+        analyses = list_available_analyses(study=selected_study())
+        if not analyses:
+            _empty_state("No downstream analyses are registered for this study.")
+        else:
+            _render_analysis_table(analyses)
+            analysis_names = [row["name"] for row in analyses]
+            analysis_cols = st.columns([1.4, 1, 1, 2])
+            with analysis_cols[0]:
+                analysis = st.selectbox("Analysis", analysis_names, key="workflow_analysis_name")
+            with analysis_cols[1]:
+                overwrite_analysis = st.checkbox("Overwrite", key="workflow_analysis_overwrite")
+            with analysis_cols[2]:
+                confirm_analysis = st.checkbox("Confirm write", key="workflow_confirm_analysis")
+            with analysis_cols[3]:
+                preview_analysis = st.button("Preview analysis", type="primary", key="workflow_analysis_preview")
+                run_analysis = st.button("Run analysis", key="workflow_analysis_run", disabled=not confirm_analysis)
+            if preview_analysis or run_analysis:
+                from Modality_Pipelines.common.analysis_registry import run_registered_analysis
+
+                with st.spinner("Planning analysis..." if preview_analysis else "Running analysis..."):
+                    result = run_registered_analysis(
+                        study=selected_study(),
+                        analysis=analysis,
+                        dry_run=preview_analysis,
+                        overwrite=overwrite_analysis,
+                        **_filters_without_modality(filters),
+                    )
+                mode = "Analysis preview" if preview_analysis else "Analysis write"
+                st.session_state["workflow_result"] = (mode, result)
+                if run_analysis:
+                    _refresh_database_caches()
+            _render_workflow_result(["Analysis preview", "Analysis write"])
+
+    with status_tab:
+        st.markdown("#### Pipeline status")
+        st.caption("Mirrors `bacpacs status` and the processing ledger.")
+        if st.button("Refresh status", type="primary", key="workflow_status_refresh"):
+            _refresh_database_caches()
+        cfg = cached_study_summary(selected_study())
+        st.write(f"Study: `{cfg['study']}`")
+        st.write(f"Database: `{cfg['database_path']}`")
+        stage_map = cached_ledger_stage_map(selected_study())
+        st.dataframe(stage_map, use_container_width=True, hide_index=True)
+        ledger = cached_processing_ledger(selected_study(), st.session_state["refresh_token"])
+        if ledger.empty:
+            _empty_state("No registered raw or processed records were found in the SciDB database.")
+        else:
+            st.dataframe(ledger, use_container_width=True, hide_index=True)
 def render_ledger() -> None:
     st.header("Processing ledger")
     cols = st.columns([1, 5])
@@ -416,6 +568,157 @@ def render_lineage() -> None:
     st.dataframe(lineage, use_container_width=True, hide_index=True)
 
 
+
+def _workflow_filters() -> dict[str, str]:
+    with st.expander("Filters", expanded=True):
+        cols = st.columns(4)
+        with cols[0]:
+            participant_number = st.text_input("Participant", placeholder="001", key="workflow_filter_participant")
+            visit = st.text_input("Visit", placeholder="BL", key="workflow_filter_visit")
+        with cols[1]:
+            modality = st.selectbox("Modality filter", ["", *MODALITIES], key="workflow_filter_modality")
+            test = st.text_input("Test", placeholder="10MWT", key="workflow_filter_test")
+        with cols[2]:
+            condition = st.text_input("Condition", placeholder="noAFO", key="workflow_filter_condition")
+            speed = st.text_input("Speed", placeholder="SSV", key="workflow_filter_speed")
+        with cols[3]:
+            trial = st.text_input("Trial", placeholder="1", key="workflow_filter_trial")
+    return _clean_filter_values(
+        {
+            "participant_number": participant_number,
+            "visit": visit,
+            "modality": modality,
+            "test": test,
+            "condition": condition,
+            "speed": speed,
+            "trial": trial,
+        }
+    )
+
+
+def _clean_filter_values(filters: dict[str, str]) -> dict[str, str]:
+    return {key: str(value).strip() for key, value in filters.items() if str(value).strip()}
+
+
+def _filters_without_modality(filters: dict[str, str]) -> dict[str, str]:
+    return {key: value for key, value in filters.items() if key != "modality"}
+
+
+def _render_filter_summary(filters: dict[str, str]) -> None:
+    if not filters:
+        st.info("No filters selected. Actions will run on the selected study scope.")
+        return
+    summary = "  ".join(f"`{key}={value}`" for key, value in filters.items())
+    st.caption(f"Active filters: {summary}")
+
+
+def _doctor_rows(study: str) -> list[dict[str, str]]:
+    from pathlib import Path
+
+    cfg = load_study_config(study)
+    repo_root = Path(__file__).resolve().parents[2]
+    env_candidates = [
+        repo_root / "BACPACS_env" / "python.exe",
+        repo_root / "BACPACS_env" / "Scripts" / "python.exe",
+        repo_root / "BAKPACS_env" / "python.exe",
+        repo_root / "BAKPACS_env" / "Scripts" / "python.exe",
+    ]
+    env_python = next((candidate for candidate in env_candidates if candidate.exists()), None)
+    rows = [
+        _path_status_row("repo_root", repo_root),
+        _path_status_row("repo_env_python", env_python),
+        _path_status_row(f"{study} subject_data_root", cfg.subject_data_root),
+        _path_status_row(f"{study} database_path", cfg.database_path),
+        _path_status_row("database_folder", cfg.database_path.parent),
+    ]
+    return rows
+
+
+def _path_status_row(label: str, path) -> dict[str, str]:
+    if path is None:
+        return {"item": label, "status": "missing", "path": ""}
+    return {"item": label, "status": "ok" if path.exists() else "missing", "path": str(path)}
+
+
+def _status_counts(df) -> dict[str, int]:
+    if df is None or df.empty or "status" not in df:
+        return {}
+    return {str(key): int(value) for key, value in df["status"].value_counts(dropna=False).to_dict().items()}
+
+
+def _render_validation_manifest(manifest) -> None:
+    counts = _status_counts(manifest)
+    if counts:
+        _render_stat_row([(key.title(), value, "attention" if key != "valid" else "default") for key, value in counts.items()])
+    display = _manifest_display(manifest).head(200)
+    st.dataframe(display, use_container_width=True, hide_index=True)
+    if len(manifest) > len(display):
+        st.caption(f"Showing first {len(display)} of {len(manifest)} rows. Use the CLI `--output` option for a full CSV export.")
+
+
+def _render_workflow_result(allowed_titles: list[str]) -> None:
+    result = st.session_state.get("workflow_result")
+    if not result or result[0] not in allowed_titles:
+        return
+    title, payload = result
+    st.markdown(f"#### {title}")
+    if isinstance(payload, dict):
+        _render_mapping_payload(payload)
+    else:
+        st.json(_json_safe(payload))
+
+
+def _render_mapping_payload(payload: dict) -> None:
+    import pandas as pd
+
+    rows = [{"field": str(key), "value": _compact_value(value)} for key, value in payload.items()]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _render_analysis_table(analyses: list[dict]) -> None:
+    import pandas as pd
+
+    rows = []
+    for row in analyses:
+        rows.append(
+            {
+                "analysis": row.get("name"),
+                "modality": row.get("modality"),
+                "input_table": row.get("input_table", ""),
+                "output_tables": ", ".join(row.get("output_tables", [])),
+                "description": row.get("description", ""),
+            }
+        )
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _compact_value(value) -> str:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return str(value)
+    if isinstance(value, (list, tuple, set)):
+        return f"{len(value)} item(s)"
+    if isinstance(value, dict):
+        return f"{len(value)} field(s)"
+    return str(value)
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _refresh_database_caches() -> None:
+    st.session_state["refresh_token"] += 1
+    cached_processing_ledger.clear()
+    cached_config_state.clear()
+    cached_lineage_records.clear()
+    cached_ledger_stage_map.clear()
+    st.session_state["cache_warm_key"] = None
 def _render_participant_flow(ledger: pd.DataFrame, stage_map: list[dict]) -> None:
     for _, row in ledger.iterrows():
         status = str(row.get("ledger_status", "empty"))
@@ -1146,4 +1449,3 @@ def _inject_css() -> None:
 
 if __name__ == "__main__":
     main()
-
