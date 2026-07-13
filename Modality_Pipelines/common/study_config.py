@@ -60,7 +60,7 @@ def _study_dict(study: str, config_path: str | Path | None = None) -> dict:
         config["file_naming"]["pattern"] = "R1_{participant_number}_{visit}_{modality}_{outcome}"
         config["file_naming"]["participant_folder_template"] = "R1_{participant_number}"
         config["visits"] = R1_VISITS
-        config["modalities"]["afo"]["folder"] = "AFO Data"
+        config["modalities"]["afo"]["folder"] = "AFO"
         return config
 
     raise ValueError(f"Unsupported study {study!r}. Currently supported studies: R1, R2")

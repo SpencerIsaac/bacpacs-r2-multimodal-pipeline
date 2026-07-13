@@ -16,7 +16,7 @@ def test_r1_and_r2_study_configs_load():
     assert r1.visits["baseline"]["folder"] == "1. Baseline"
     assert r1.visits["mid_test"]["folder"] == "2. Mid-Test"
     assert r1.visits["mid_test"]["file_code"] == "MP"
-    assert r1.modalities["afo"]["folder"] == "AFO Data"
+    assert r1.modalities["afo"]["folder"] == "AFO"
     assert r1.database_path == r2.database_path
 
     assert r2.study == "R2"
