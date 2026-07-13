@@ -1,0 +1,26 @@
+site_name: BACPACS data pipeline
+site_description: SOP-aligned documentation for the BACPACS multimodal ambulation data pipeline
+repo_url: https://github.com/SpencerIsaac/bacpacs-r2-multimodal-pipeline
+nav:
+  - Home: index.md
+  - SOP mirror:
+      - SOP source of truth: sop/bacpacs-pipeline-sop.md
+  - User guide:
+      - First-time setup: user-guide/first-time-setup.md
+      - Running the pipeline: user-guide/running-the-pipeline.md
+      - CLI reference: user-guide/cli-reference.md
+      - GUI control panel: user-guide/gui-control-panel.md
+  - Developer guide:
+      - Architecture: developer-guide/architecture.md
+      - Adding analysis methods: developer-guide/adding-analysis-methods.md
+      - Configuration reference: developer-guide/configuration-reference.md
+      - Documentation freshness: developer-guide/documentation-freshness.md
+  - Reference:
+      - Canonical tables: reference/canonical-tables.md
+      - Discrepancy log: reference/discrepancies.md
+      - Glossary: reference/glossary.md
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true

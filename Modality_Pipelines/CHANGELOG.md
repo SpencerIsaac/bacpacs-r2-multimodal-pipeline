@@ -2,6 +2,11 @@
 
 This file is the project-level changelog for pipeline infrastructure changes. Per-file headers may exist for older modules, but this file is the source of truth for repo-level history.
 
+## 2026-07-13
+
+- Added MkDocs documentation scaffold with SOP-aligned user guide, developer guide, canonical reference tables, and discrepancy log.
+- Added `docs/source_of_truth.json`, `scripts/check_docs_freshness.py`, and `tests/test_docs_freshness.py` to prevent documentation drift from runtime config and table metadata.
+- Updated internal README, network quick start, control-panel docs, and analysis-registry docs for the shared R1/R2 database architecture and GUI/CLI mirror workflow.
 ## 2026-07-10
 
 - Standardized the R1 AFO modality folder to `AFO` to match R2 naming.

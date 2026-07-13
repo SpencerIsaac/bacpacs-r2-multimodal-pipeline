@@ -1,4 +1,4 @@
-# BACPACS Network Quick Start
+# BACPACS network quick start
 
 Use this when working from any Windows computer that can access the shared RTO project folder.
 
@@ -16,7 +16,7 @@ If the computer uses the UNC path instead of the `Y:` drive, open the same `Pipe
 .\bacpacs.cmd doctor
 ```
 
-This checks the repo-local Python environment, study subject-data roots, and database paths.
+This checks the repo-local Python environment, R1 subject-data root, R2 subject-data root, shared database path, and database folder.
 
 ## Launch the GUI
 
@@ -30,9 +30,11 @@ You can also double-click:
 launch_bacpacs_gui.cmd
 ```
 
+The GUI mirrors the CLI workflow and calls the same backend functions.
+
 ## Run CLI commands
 
-The `.cmd` launcher supports the same commands as the installed `bacpacs` executable, but it does not require the env `Scripts` folder to be on PATH and avoids local PowerShell execution-policy issues.
+The `.cmd` launcher supports the same commands as the installed `bacpacs` executable, but it does not require the environment `Scripts` folder to be on PATH.
 
 ```powershell
 .\bacpacs.cmd studies
@@ -42,15 +44,19 @@ The `.cmd` launcher supports the same commands as the installed `bacpacs` execut
 .\bacpacs.cmd process --study R2 --modality delsys --dry-run
 ```
 
-Operational commands still require `--study R1` or `--study R2`. The only commands intended before choosing a study are `studies`, `doctor`, `gui`, and help.
+Operational commands require `--study R1` or `--study R2`. The commands intended before choosing a study are `studies`, `doctor`, `gui`, and help.
 
-## Why use the launcher?
+## Documentation
 
-`bacpacs` only works directly when the active environment installed the package and its `Scripts` folder is on PATH. The repo launcher finds the shared repo-local environment automatically and runs:
+MkDocs pages live under:
 
-```powershell
-python -m Modality_Pipelines.cli
+```text
+docs/
 ```
 
-That makes it more reliable from lab computers where PATH and drive mappings differ.
+Run the docs freshness check after changing config, CLI behavior, table names, or study conventions:
+
+```powershell
+python scripts\check_docs_freshness.py
+```
 

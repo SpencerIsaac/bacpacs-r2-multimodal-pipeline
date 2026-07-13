@@ -1,9 +1,32 @@
-# Runtime Analysis Registry
+# Runtime analysis registry
 
-Downstream analysis stages are discovered from `Modality_Pipelines/common/analysis_registry.json`.
-The CLI should read this registry instead of hardcoding every analysis command.
+Downstream analysis stages are discovered from:
 
-A new batch analysis needs three pieces:
+```text
+Modality_Pipelines/common/analysis_registry.json
+```
+
+The CLI and GUI read this registry instead of hardcoding every analysis command.
+
+## Add an analysis in this order
+
+```text
+1. Write analysis code in a modality-specific folder
+   example: Modality_Pipelines/Delsys_Pipeline/analyses/coactivation.py
+
+2. Add a study-specific output table
+   Modality_Pipelines/common/r1_scidb_tables.py
+   Modality_Pipelines/common/r2_scidb_tables.py
+
+3. Register the analysis in JSON
+   Modality_Pipelines/common/analysis_registry.json
+
+4. Test discovery and dry run
+   .\bacpacs.cmd analyses --study R2
+   .\bacpacs.cmd analyze --study R2 --analysis coactivation --dry-run
+```
+
+A batch analysis needs three pieces:
 
 1. A Python analysis function that operates on processed records.
 2. A study-specific output table class in `r1_scidb_tables.py` and/or `r2_scidb_tables.py`.
@@ -38,7 +61,7 @@ def run_analysis(processed_record, config=None):
     ...
 ```
 
-The backend entry point for CLI integration is:
+Backend entry points:
 
 ```python
 from Modality_Pipelines.common.analysis_registry import (
