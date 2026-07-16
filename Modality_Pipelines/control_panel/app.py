@@ -350,13 +350,76 @@ def render_pipeline_workflow() -> None:
         _render_workflow_result(["Processing preview", "Processing write"])
 
     with analysis_tab:
-        st.markdown("#### Downstream analysis")
-        st.caption("Mirrors `bacpacs analyses` and `bacpacs analyze`. Analyses are discovered from the runtime registry and read processed tables only.")
+        st.markdown("#### Derived analysis tables")
+        st.caption("Builds TrialAnalysis, CycleUnmatched, VisitSummary, CycleMatched, and AnalysisIssue from processed Xsens, Delsys, and GAITRite tables.")
+        analysis_filters = _filters_without_modality(filters)
+        table_counts = _downstream_table_counts(selected_study(), analysis_filters)
+        _render_dataframe(table_counts, width="stretch", hide_index=True)
+
+        stage_labels = {
+            "build-all": "Build all and export",
+            "build-trial": "Build trial table",
+            "build-cycles": "Build unmatched cycles",
+            "finalize-visit": "Finalize visit summary",
+            "normalize-cycles": "Normalize cycles to visit",
+            "build-matched": "Build matched cycles",
+            "export": "Export existing tables",
+        }
+        stage_functions = {
+            "build-all": "build_all",
+            "build-trial": "build_trial_analysis",
+            "build-cycles": "build_cycle_unmatched",
+            "finalize-visit": "finalize_visit_summary",
+            "normalize-cycles": "normalize_cycles_to_visit",
+            "build-matched": "build_cycle_matched",
+            "export": "export_analysis_tables",
+        }
+        derived_cols = st.columns([1.6, 1, 2.4])
+        with derived_cols[0]:
+            derived_stage = st.selectbox(
+                "Stage",
+                options=list(stage_labels),
+                format_func=lambda value: stage_labels[value],
+                key="workflow_derived_stage",
+            )
+        with derived_cols[1]:
+            refresh_counts = st.button("Refresh counts", key="workflow_derived_refresh", width="stretch")
+        with derived_cols[2]:
+            run_derived = st.button(
+                stage_labels[derived_stage],
+                type="primary" if derived_stage == "build-all" else "secondary",
+                key="workflow_derived_run",
+                width="stretch",
+            )
+        if refresh_counts:
+            _refresh_database_caches()
+            st.rerun()
+        if run_derived:
+            from Modality_Pipelines.common import downstream_analysis
+
+            fn = getattr(downstream_analysis, stage_functions[derived_stage])
+            kwargs = {"study": selected_study(), **analysis_filters}
+            if derived_stage in {"build-all", "export"}:
+                kwargs["output_dir"] = None
+            try:
+                with st.spinner(f"Running {stage_labels[derived_stage].lower()}..."):
+                    result = fn(**kwargs)
+            except downstream_analysis.AnalysisPreconditionError as exc:
+                st.error(f"Analysis precondition failed: {exc}")
+            else:
+                st.session_state["workflow_result"] = ("Derived analysis", result)
+                _refresh_database_caches()
+                st.success("Derived analysis stage completed.")
+        _render_workflow_result(["Derived analysis"])
+
+        st.divider()
+        st.markdown("#### Registry analyses")
+        st.caption("Optional ad hoc analyses discovered from the runtime registry. These are separate from the fixed downstream table layer above.")
         from Modality_Pipelines.common.analysis_registry import list_available_analyses
 
         analyses = list_available_analyses(study=selected_study())
         if not analyses:
-            _empty_state("No downstream analyses are registered for this study.")
+            _empty_state("No registry analyses are registered for this study.")
         else:
             _render_analysis_table(analyses)
             analysis_names = [row["name"] for row in analyses]
@@ -377,7 +440,7 @@ def render_pipeline_workflow() -> None:
                         analysis=analysis,
                         dry_run=preview_analysis,
                         overwrite=overwrite_analysis,
-                        **_filters_without_modality(filters),
+                        **analysis_filters,
                     )
                 mode = "Analysis preview" if preview_analysis else "Analysis write"
                 st.session_state["workflow_result"] = (mode, result)
@@ -756,6 +819,33 @@ def _render_analysis_table(analyses: list[dict]) -> None:
     _render_dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
+
+def _downstream_table_counts(study: str, filters: dict[str, str]):
+    import pandas as pd
+
+    from Modality_Pipelines.common import downstream_analysis
+
+    labels = {
+        "trial": "TrialAnalysis",
+        "cycle_unmatched": "CycleUnmatched",
+        "visit": "VisitSummary",
+        "cycle_matched": "CycleMatched",
+        "issue": "AnalysisIssue",
+    }
+    try:
+        ctx = downstream_analysis._context(study, filters)
+    except Exception as exc:
+        return pd.DataFrame([{"table": "database", "rows": 0, "status": f"unavailable: {exc}"}])
+
+    rows = []
+    for key, label in labels.items():
+        table_name = downstream_analysis.ANALYSIS_TABLES[study][key]
+        try:
+            df = downstream_analysis._load_table(ctx, key)
+            rows.append({"table": table_name, "role": label, "rows": int(len(df)), "status": "ok"})
+        except Exception as exc:
+            rows.append({"table": table_name, "role": label, "rows": 0, "status": f"error: {exc}"})
+    return pd.DataFrame(rows)
 def _compact_value(value) -> str:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return str(value)
