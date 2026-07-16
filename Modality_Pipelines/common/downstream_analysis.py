@@ -98,6 +98,7 @@ def build_trial_analysis(study: str = "R2", **filters) -> dict[str, int]:
         "gaitrite": _by_trial(gaitrite_loaded),
     }
     all_keys = set().union(*(set(value) for value in indexed.values()))
+    existing_trials = {_trial_key(row) for _, row in _load_table(ctx, "trial").iterrows()}
     saved = 0
     issues = 0
     skipped = 0
@@ -108,6 +109,10 @@ def build_trial_analysis(study: str = "R2", **filters) -> dict[str, int]:
             for modality in missing:
                 _save_issue(ctx, metadata, "trial_analysis", "missing_modality", modality=modality, message=f"Missing {modality} processed record for trial.")
                 issues += 1
+            skipped += 1
+            continue
+
+        if key in existing_trials:
             skipped += 1
             continue
 
@@ -140,6 +145,7 @@ def build_cycle_unmatched(study: str = "R2", **filters) -> dict[str, int]:
     ctx = _context(study, filters)
     trials = _load_table(ctx, "trial")
     _require_rows(trials, "TrialAnalysis", "build-trial")
+    existing_cycles = {_schema_tuple(row) for _, row in _load_table(ctx, "cycle_unmatched").iterrows()}
     saved = 0
     issues = 0
     skipped = 0
@@ -173,6 +179,9 @@ def build_cycle_unmatched(study: str = "R2", **filters) -> dict[str, int]:
             start_end = _cycle_start_end(event_seconds, side, side_cycle_index)
             cycle_index = _cycle_number(cycle_row, default=sum(side_counts.values()))
             metadata = {**metadata_base, "cycle": str(cycle_index)}
+            if _schema_tuple(metadata) in existing_cycles:
+                skipped += 1
+                continue
             if start_end is None:
                 _save_issue(ctx, metadata, "cycle_unmatched", "slice_failure", message=f"Not enough {side} heel strikes for cycle {cycle_index}.")
                 issues += 1
@@ -271,6 +280,9 @@ def normalize_cycles_to_visit(study: str = "R2", **filters) -> dict[str, int]:
             continue
         max_emg = _payload_value(summary, "max_emg", {}) if isinstance(summary, Mapping) else {}
         data = dict(_row_value(row, "data") or {})
+        if _payload_value(data, "normalized_at") or _payload_value(data, "delsys_normalized_time_normalized"):
+            skipped += 1
+            continue
         normalized = {}
         for muscle, values in (_payload_value(data, "delsys_time_normalized", {}) or {}).items():
             denom = max_emg.get(muscle)
@@ -295,6 +307,7 @@ def build_cycle_matched(study: str = "R2", **filters) -> dict[str, int]:
     _require_rows(cycles, "CycleUnmatched", "normalize-cycles")
     if not _has_normalized_cycles(cycles):
         raise AnalysisPreconditionError("build-matched requires normalized CycleUnmatched rows. Run normalize-cycles first.")
+    existing_matches = {_schema_tuple(row) for _, row in _load_table(ctx, "cycle_matched").iterrows()}
     saved = 0
     issues = 0
     grouped = cycles.sort_values(["participant_number", "visit", "test", "condition", "speed", "trial", "cycle"]).groupby(list(TRIAL_KEYS), dropna=False)
@@ -308,6 +321,8 @@ def build_cycle_matched(study: str = "R2", **filters) -> dict[str, int]:
             current_side = str(_payload_value(current_data, "side") or _payload_value(current_data, "start_foot") or "").upper()
             next_side = str(_payload_value(next_data, "side") or _payload_value(next_data, "start_foot") or "").upper()
             metadata = _metadata_from_row(current, cycle=str(idx + 1))
+            if _schema_tuple(metadata) in existing_matches:
+                continue
             if current_side not in {"L", "R"} or next_side not in {"L", "R"} or current_side == next_side:
                 _save_issue(ctx, metadata, "cycle_matching", "non_alternating_cycles", source_record_id=_row_value(current, "__record_id"), related_record_ids=[_row_value(nxt, "__record_id")], message="Adjacent cycles do not alternate L/R.")
                 issues += 1
@@ -388,26 +403,26 @@ def _load_table(ctx, key: str) -> pd.DataFrame:
     table = _table(ctx, key)
     metadata = {k: v for k, v in ctx["filters"].items() if k in SCHEMA_KEYS and v is not None}
     try:
-        return ctx["db"].load_all_as_df(table, metadata=metadata or None, include_rid=True)
+        return _dedupe_derived_rows(key, ctx["db"].load_all_as_df(table, metadata=metadata or None, include_rid=True))
     except Exception as exc:
         if _looks_like_missing_table(exc):
             return pd.DataFrame()
-        if key == "issue" and _looks_like_json_decode(exc):
-            return _load_issue_table_direct(ctx, metadata)
+        if key in EXPORT_FILES and _looks_like_json_decode(exc):
+            return _dedupe_derived_rows(key, _load_derived_table_direct(ctx, key, metadata))
         raise
 
 
-def _load_issue_table_direct(ctx, metadata: Mapping[str, Any]) -> pd.DataFrame:
-    """Load AnalysisIssue rows when SciDB JSON dtype inference rejects text columns."""
+def _load_derived_table_direct(ctx, key: str, metadata: Mapping[str, Any]) -> pd.DataFrame:
+    """Load derived tables when SciDB JSON dtype inference rejects text columns."""
     import duckdb
 
-    table_name = ANALYSIS_TABLES[ctx["study"]]["issue"]
+    table_name = ANALYSIS_TABLES[ctx["study"]][key]
     db_path = str(ctx["config"].database_path)
     where = []
     params = []
-    for key, value in metadata.items():
-        if key in SCHEMA_KEYS and value is not None:
-            where.append(f'"{key}" = ?')
+    for schema_key, value in metadata.items():
+        if schema_key in SCHEMA_KEYS and value is not None:
+            where.append(f'"{schema_key}" = ?')
             params.append(str(value))
     sql = f'SELECT * FROM "{table_name}"'
     if where:
@@ -425,22 +440,70 @@ def _load_issue_table_direct(ctx, metadata: Mapping[str, Any]) -> pd.DataFrame:
         raise
     if raw.empty:
         return pd.DataFrame()
+
+    data_columns = [column for column in raw.columns if not _is_direct_metadata_column(column)]
     rows = []
     for _, row in raw.iterrows():
-        data = {}
-        for column in ISSUE_EXPORT_COLUMNS:
-            if column in raw.columns:
-                data[column] = _decode_payload_value(row[column])
+        data = {column: _clean_direct_value(row[column]) for column in data_columns}
         rows.append(
             {
                 "__record_id": row.get("record_id"),
-                **{key: _clean_schema_value(row.get(key)) for key in SCHEMA_KEYS if key in raw.columns},
+                **{schema_key: _clean_schema_value(row.get(schema_key)) for schema_key in SCHEMA_KEYS if schema_key in raw.columns},
                 "data": data,
             }
         )
     return pd.DataFrame(rows)
 
 
+def _is_direct_metadata_column(column: str) -> bool:
+    if column in {"record_id", "schema_level", "excluded"}:
+        return True
+    if column in SCHEMA_KEYS:
+        return True
+    return any(column == f"{schema_key}_1" for schema_key in SCHEMA_KEYS)
+
+
+def _clean_direct_value(value):
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return _decode_payload_value(value)
+
+
+
+def _dedupe_derived_rows(key: str, df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or key not in EXPORT_FILES:
+        return df
+    result = df.copy()
+    if "data" in result.columns:
+        result["__has_normalized"] = result["data"].map(
+            lambda value: bool(_payload_value(value, "delsys_normalized_time_normalized")) if isinstance(value, Mapping) else False
+        )
+    else:
+        result["__has_normalized"] = False
+
+    if key == "visit":
+        subset = [column for column in ["participant_number", "visit"] if column in result.columns]
+    elif key == "issue":
+        result["__issue_stage"] = result["data"].map(lambda value: _payload_value(value, "stage") if isinstance(value, Mapping) else None)
+        result["__issue_type"] = result["data"].map(lambda value: _payload_value(value, "issue_type") if isinstance(value, Mapping) else None)
+        result["__issue_modality"] = result["data"].map(lambda value: _payload_value(value, "modality") if isinstance(value, Mapping) else None)
+        result["__issue_message"] = result["data"].map(lambda value: _payload_value(value, "message") if isinstance(value, Mapping) else None)
+        subset = [column for column in [*SCHEMA_KEYS, "__issue_stage", "__issue_type", "__issue_modality", "__issue_message"] if column in result.columns]
+    else:
+        subset = [column for column in SCHEMA_KEYS if column in result.columns]
+
+    if subset:
+        result = result.sort_values("__has_normalized").drop_duplicates(subset=subset, keep="last")
+    drop_columns = [column for column in result.columns if column.startswith("__") and column != "__record_id"]
+    return result.drop(columns=drop_columns, errors="ignore").reset_index(drop=True)
+
+
+def _schema_tuple(row_or_metadata) -> tuple:
+    getter = row_or_metadata.get if hasattr(row_or_metadata, "get") else lambda key, default=None: default
+    return tuple(_clean_schema_value(getter(key)) for key in SCHEMA_KEYS)
 def _by_trial(df: pd.DataFrame) -> dict[tuple, list[pd.Series]]:
     rows = defaultdict(list)
     if df.empty:
