@@ -1,0 +1,81 @@
+import numpy as np
+import pytest
+
+from Modality_Pipelines.common import downstream_analysis as da
+from Modality_Pipelines.common.table_registry import get_table_class
+
+
+def test_analysis_table_names_are_exact_per_study():
+    assert get_table_class("R1", "R1TrialAnalysis").__name__ == "R1TrialAnalysis"
+    assert get_table_class("R2", "TrialAnalysis").__name__ == "TrialAnalysis"
+    with pytest.raises(KeyError):
+        get_table_class("R1", "TrialAnalysis")
+    with pytest.raises(KeyError):
+        get_table_class("R2", "R2TrialAnalysis")
+
+
+def test_resample_to_points_preserves_linear_shape():
+    result = da._resample_to_points(np.array([0.0, 10.0]), 5)
+
+    assert np.allclose(result, [0.0, 2.5, 5.0, 7.5, 10.0])
+
+
+def test_slice_and_resample_signals_uses_seconds_and_sampling_frequency():
+    signals = {"LTA": np.arange(10, dtype=float)}
+
+    result = da._slice_and_resample_signals(signals, start_seconds=0.2, end_seconds=0.6, fs=10)
+
+    assert set(result) == {"LTA"}
+    assert len(result["LTA"]) == da.NUM_POINTS
+    assert np.isclose(result["LTA"][0], 2.0)
+    assert np.isclose(result["LTA"][-1], 5.0)
+
+
+def test_merge_side_signals_keeps_current_ipsilateral_and_next_contralateral():
+    current = {"delsys_time_normalized": {"LTA": [1], "RTA": [99]}}
+    next_cycle = {"delsys_time_normalized": {"LTA": [88], "RTA": [2]}}
+
+    result = da._merge_side_signals(current, next_cycle, "delsys_time_normalized", "L", "R")
+
+    assert result == {"LTA": [1], "RTA": [2]}
+
+
+def test_build_cycles_hard_fails_without_trial_analysis(tmp_path):
+    with pytest.raises(da.AnalysisPreconditionError, match="TrialAnalysis rows are required"):
+        da.build_cycle_unmatched(study="R2", database_path=tmp_path / "empty.duckdb")
+
+
+def test_issue_severity_defaults_cover_required_issue_types():
+    assert da.ISSUE_SEVERITY == {
+        "missing_modality": "error",
+        "mismatched_trial": "error",
+        "missing_gait_events": "error",
+        "slice_failure": "error",
+        "missing_visit_summary": "error",
+        "missing_or_zero_visit_max": "error",
+        "non_alternating_cycles": "warning",
+        "export_failure": "error",
+    }
+
+def test_storage_payload_serializes_nested_values_and_decodes_them():
+    stored = da._storage_payload({"scalar": "ok", "nested": {"LTA": np.array([1.0, 2.0])}})
+
+    assert stored["scalar"] == "ok"
+    assert isinstance(stored["nested"], str)
+    assert da._payload_value(stored, "nested") == {"LTA": [1.0, 2.0]}
+
+
+def test_has_normalized_cycles_reads_json_storage_payloads():
+    row = {"data": da._storage_payload({"delsys_normalized_time_normalized": {"LTA": [0.1]}})}
+
+    assert da._has_normalized_cycles(__import__("pandas").DataFrame([row]))
+
+
+def test_normalize_cycles_hard_fails_without_visit_summary(tmp_path):
+    with pytest.raises(da.AnalysisPreconditionError, match="CycleUnmatched rows are required"):
+        da.normalize_cycles_to_visit(study="R2", database_path=tmp_path / "empty.duckdb")
+
+
+def test_export_hard_fails_without_analysis_tables(tmp_path):
+    with pytest.raises(da.AnalysisPreconditionError, match="No derived analysis tables exist"):
+        da.export_analysis_tables(study="R2", database_path=tmp_path / "empty.duckdb", output_dir=tmp_path)

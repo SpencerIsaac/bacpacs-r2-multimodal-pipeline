@@ -65,6 +65,7 @@ SCHEMA_KEYS = tuple(CONFIG["file_naming"]["schema_keys"])
 
 PARTICIPANT_NUMBER_FORMAT = CONFIG["file_naming"]["participant_number_format"]
 PARTICIPANT_FOLDER_TEMPLATE = CONFIG["file_naming"]["participant_folder_template"]
+PARTICIPANT_PREFIX = PARTICIPANT_FOLDER_TEMPLATE.split("_", maxsplit=1)[0]
 
 VISITS = CONFIG["visits"]
 MODALITIES = CONFIG["modalities"]
@@ -73,24 +74,41 @@ TASKS = CONFIG["tasks"]
 SPEED_OUTCOME_CODES = CONFIG["speed_outcome_codes"]
 
 
-def format_participant_number(participant: int | str) -> str:
+def _study_value(study_config, field: str, default):
+    """Return a study config value when provided, otherwise the R2 default."""
+    return getattr(study_config, field, default) if study_config is not None else default
+
+
+def format_participant_number(participant: int | str, study_config=None) -> str:
     """Return the three-digit participant number used in SOP file names.
 
     Examples: ``1``, ``"001"``, and ``"R2_001"`` all return ``"001"``.
     """
+    participant_prefix = _study_value(study_config, "participant_prefix", PARTICIPANT_PREFIX)
+    participant_number_format = _study_value(
+        study_config,
+        "participant_number_format",
+        PARTICIPANT_NUMBER_FORMAT,
+    )
+
     if isinstance(participant, str):
-        participant = participant.strip().upper().removeprefix("R2_")
+        participant = participant.strip().upper().removeprefix(f"{participant_prefix.upper()}_")
 
-    return PARTICIPANT_NUMBER_FORMAT.format(int(participant))
+    return participant_number_format.format(int(participant))
 
 
-def format_participant(participant: int | str) -> str:
+def format_participant(participant: int | str, study_config=None) -> str:
     """Return the participant folder name used under ``SUBJECT_DATA_ROOT``.
 
     Example: ``format_participant("001")`` returns ``"R2_001"``.
     """
-    return PARTICIPANT_FOLDER_TEMPLATE.format(
-        participant_number=format_participant_number(participant)
+    participant_folder_template = _study_value(
+        study_config,
+        "participant_folder_template",
+        PARTICIPANT_FOLDER_TEMPLATE,
+    )
+    return participant_folder_template.format(
+        participant_number=format_participant_number(participant, study_config)
     )
 
 
@@ -114,6 +132,7 @@ def build_file_name(
     visit: str,
     modality: str,
     outcome: str,
+    study_config=None,
 ) -> str:
     """Build a raw-file stem from the four SOP file-name fields.
 
@@ -121,15 +140,19 @@ def build_file_name(
     ``baseline`` and ``gaitrite``. The returned file stem does not include an
     extension.
     """
-    return FILE_NAME_PATTERN.format(
-        participant_number=format_participant_number(participant),
-        visit=VISITS[visit]["file_code"],
-        modality=MODALITIES[modality]["file_code"],
+    file_name_pattern = _study_value(study_config, "file_name_pattern", FILE_NAME_PATTERN)
+    visits = _study_value(study_config, "visits", VISITS)
+    modalities = _study_value(study_config, "modalities", MODALITIES)
+
+    return file_name_pattern.format(
+        participant_number=format_participant_number(participant, study_config),
+        visit=visits[visit]["file_code"],
+        modality=modalities[modality]["file_code"],
         outcome=outcome,
     )
 
 
-def parse_file_name(file_name: str | Path) -> dict[str, str]:
+def parse_file_name(file_name: str | Path, study_config=None) -> dict[str, str]:
     """Parse an SOP file name into SOP file-name metadata.
 
     Parameters
@@ -150,40 +173,71 @@ def parse_file_name(file_name: str | Path) -> dict[str, str]:
     """
     stem = Path(file_name).stem
     parts = stem.split("_", maxsplit=4)
+    participant_prefix = _study_value(study_config, "participant_prefix", PARTICIPANT_PREFIX)
+    expected_pattern = _study_value(study_config, "file_name_pattern", FILE_NAME_PATTERN)
 
-    if len(parts) != 5 or parts[0] != "R2":
+    if len(parts) != 5 or parts[0] != participant_prefix:
         raise ValueError(
             f"File name {Path(file_name).name!r} does not match "
-            f"R2_{{participant_number}}_{{visit}}_{{modality}}_{{outcome}}"
+            f"{expected_pattern}"
         )
 
     return {
-        "participant_number": format_participant_number(parts[1]),
+        "participant_number": format_participant_number(parts[1], study_config),
         "visit": parts[2],
         "modality": parts[3],
         "outcome": parts[4],
     }
 
 
-def participant_folder(participant: int | str) -> Path:
+def participant_folder(participant: int | str, study_config=None) -> Path:
     """Return the participant folder path under ``SUBJECT_DATA_ROOT``."""
-    return BASEPATH / format_participant(participant)
+    basepath = _study_value(study_config, "subject_data_root", BASEPATH)
+    return basepath / format_participant(participant, study_config)
 
 
-def modality_folder(participant: int | str, visit: str, modality: str) -> Path:
+def modality_folder(participant: int | str, visit: str, modality: str, study_config=None) -> Path:
     """Return the expected raw-data folder for one participant/visit/modality.
 
     Parameters use canonical config keys, such as ``visit="baseline"`` and
     ``modality="gaitrite"``.
     """
-    return participant_folder(participant) / VISITS[visit]["folder"] / MODALITIES[modality]["folder"]
+    visits = _study_value(study_config, "visits", VISITS)
+    modalities = _study_value(study_config, "modalities", MODALITIES)
+    return (
+        participant_folder(participant, study_config)
+        / visits[visit]["folder"]
+        / modalities[modality]["folder"]
+    )
 
 
-def configure_scistack_database(database_path: str | Path | None = None):
-    """Configure the SciStack/scidb DuckDB database for the R2 pipeline."""
-    from scidb import configure_database
+def configure_scistack_database(database_path: str | Path | None = None, study_config=None):
+    """Configure or reuse the SciStack/scidb DuckDB database.
 
-    return configure_database(database_path or DATABASE_PATH, list(SCHEMA_KEYS))
+    DuckDB permits only one writable connection to a database file per process.
+    The Streamlit control panel may query SciDB before launching processing, so
+    reuse the existing SciStack DatabaseManager when it already points at the
+    requested study database and schema.
+    """
+    from scidb import configure_database, get_database
+
+    resolved_database_path = Path(database_path or _study_value(study_config, "database_path", DATABASE_PATH))
+    schema_keys = list(_study_value(study_config, "schema_keys", SCHEMA_KEYS))
+
+    try:
+        current_database = get_database()
+    except Exception:
+        current_database = None
+
+    if current_database is not None:
+        current_path = Path(getattr(current_database, "dataset_db_path", ""))
+        current_schema_keys = list(getattr(current_database, "dataset_schema_keys", []))
+        if current_path == resolved_database_path and current_schema_keys == schema_keys:
+            if getattr(current_database, "_closed", False):
+                current_database.reopen()
+            return current_database
+
+    return configure_database(resolved_database_path, schema_keys)
 
 
 

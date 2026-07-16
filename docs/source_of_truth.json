@@ -1,0 +1,41 @@
+{
+    "sop_version":  "0.3 prerelease",
+    "sop_file":  "BACPACS Multimodal Ambulation Data Pipeline SOP (4).pdf",
+    "status":  "SOP-aligned documentation with downstream analysis table layer",
+    "studies":  [
+                    "R1",
+                    "R2"
+                ],
+    "shared_database_path":  "Y:\\BACPACS R2 - Spinal Stim\\Pipeline_development\\r2_pipeline.duckdb",
+    "source_files":  [
+                         "Modality_Pipelines/config.json",
+                         "Modality_Pipelines/common/study_config.py",
+                         "Modality_Pipelines/common/table_registry.py",
+                         "Modality_Pipelines/common/lightweight_registry.py",
+                         "Modality_Pipelines/common/analysis_registry.json",
+                         "Modality_Pipelines/cli.py",
+                         "Modality_Pipelines/control_panel/app.py",
+                         "Modality_Pipelines/common/downstream_analysis.py",
+                         "analysis_scripts/export_scidb_table_for_matlab.py",
+                         "analysis_scripts/export_scidb_table_to_mat.m"
+                     ],
+    "required_cli_commands":  [
+                                  "doctor",
+                                  "studies",
+                                  "gui",
+                                  "validate",
+                                  "register",
+                                  "process",
+                                  "status",
+                                  "analyses",
+                                  "analyze",
+                                  "build-trial",
+                                  "build-cycles",
+                                  "finalize-visit",
+                                  "normalize-cycles",
+                                  "build-matched",
+                                  "build-all",
+                                  "export"
+                              ],
+    "documentation_rule":  "The SOP is the human source of truth. The executable config is the machine source of truth. MkDocs must identify discrepancies between them."
+}

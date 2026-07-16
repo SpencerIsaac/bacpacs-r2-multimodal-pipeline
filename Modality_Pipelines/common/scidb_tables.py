@@ -90,4 +90,31 @@ class AfoProcessed(BaseVariable):
 
     schema_version = 1
 
+class TrialAnalysis(BaseVariable):
+    """Derived trial-level multimodal analysis row."""
 
+    schema_version = 1
+
+
+class CycleUnmatched(BaseVariable):
+    """Derived side-specific gait-cycle analysis row before L/R matching."""
+
+    schema_version = 1
+
+
+class CycleMatched(BaseVariable):
+    """Derived matched left/right gait-cycle pair for symmetry analysis."""
+
+    schema_version = 1
+
+
+class VisitSummary(BaseVariable):
+    """Derived finalized visit-level normalization summary."""
+
+    schema_version = 1
+
+
+class AnalysisIssue(BaseVariable):
+    """Structured downstream analysis issue log."""
+
+    schema_version = 1

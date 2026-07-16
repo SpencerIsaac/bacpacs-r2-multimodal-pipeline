@@ -1,4 +1,4 @@
-﻿# Python caches
+# Python caches
 __pycache__/
 *.py[cod]
 *.pyo
@@ -20,6 +20,7 @@ DB_files/
 *.log
 *.tmp
 *.bak
+analysis_scripts/exports/
 
 # OS/editor files
 .DS_Store
@@ -28,3 +29,6 @@ Thumbs.db
 
 # Keep subject data out of this repo if paths are copied here later
 Subject Data/
+
+# Generated documentation
+site/

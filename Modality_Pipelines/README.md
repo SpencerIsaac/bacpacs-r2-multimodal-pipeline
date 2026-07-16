@@ -1,116 +1,108 @@
-﻿# R2 Modality Pipelines
+# BACPACS modality pipelines
+
+[![tests](https://github.com/SpencerIsaac/bacpacs-r2-multimodal-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/SpencerIsaac/bacpacs-r2-multimodal-pipeline/actions/workflows/tests.yml)
 
 @author shensley01
-@version 0.3.1
-@last_updated 2026-07-06
-@change_log
-- 2026-07-06 v0.3.1: Deprecated the unused `ProcessingLog` artifact and aligned documented table classes with the current pipeline surface.
-- 2026-07-02 v0.3.0: Documented separate file_name_keys and analysis schema_keys.
-- 2026-07-01 v0.2.1: Clarified project path config keys: project_root, subject_data_root, pipeline_root, and database_path.
-- 2026-07-01 v0.2.0: Updated documented hierarchy after moving shared SciDB tables into common and GAITRite scaffold files into GAITRite_Pipeline.
-- 2026-07-01 v0.1.0: Added initial pipeline configuration structure and guidance.
+@version 0.7.0
+@last_updated 2026-07-13
 
-This folder contains the R2 Spinal Stim multimodal ambulation pipeline scaffolding. The pipeline is organized around the SOP file naming convention:
+This folder contains the BACPACS multimodal ambulation pipeline backend. The current backend supports BACPACS R1 Smart AFO and BACPACS R2 Spinal Stim through one shared processing flow, one shared DuckDB database, and separate study-specific table namespaces.
+
+The SOP-level filename pattern is:
 
 ```text
+{study}_{participant_number}_{visit}_{modality}_{outcome}
+```
+
+Resolved runtime patterns are:
+
+```text
+R1_{participant_number}_{visit}_{modality}_{outcome}
 R2_{participant_number}_{visit}_{modality}_{outcome}
 ```
 
-Those four fields describe raw-file identity and discovery. They are stored as `file_name_keys`. Downstream SciDB tables use separate analysis `schema_keys`: `participant_number`, `visit`, `test`, `condition`, `speed`, `trial`, and `cycle`.
+Downstream SciDB tables use the shared schema keys: `participant_number`, `visit`, `test`, `condition`, `speed`, `trial`, and `cycle`.
 
-## Configuration Layout
+## Documentation
 
-Shared study vocabulary lives in the root `config.json` file. This includes explicit project paths (`project_root`, `subject_data_root`, `pipeline_root`, `database_path`), the file naming pattern, current schema keys, visit folder names/codes, modality folder names/codes, condition codes, and task/outcome codes.
-
-Python code should access shared configuration through:
+The MkDocs documentation is the repo-readable mirror of the SOP:
 
 ```text
-common/common_config.py
+docs/
+mkdocs.yml
+docs/source_of_truth.json
+scripts/check_docs_freshness.py
 ```
 
-Do not duplicate visit codes, modality codes, folder names, or file naming patterns inside modality-specific scripts.
+The SOP is the human source of truth. The executable config is the machine source of truth. Run the docs freshness check after changing study config, CLI commands, table names, folder names, or analysis registry behavior.
 
-## Shared Code
-
-Use `common/` for code that is genuinely shared across modalities:
-
-```text
-common/common_config.py
-common/scidb_tables.py
+```powershell
+python scripts\check_docs_freshness.py
 ```
 
-`common_config.py` loads the shared JSON config and provides small path/name helpers.
+## Shared database
 
-`scidb_tables.py` defines SciDB table classes for modality-specific raw-file records and processed outputs, including `GAITRiteRawFile`, `XsensRawFile`, `DelsysRawFile`, `CosmedRawFile`, `AfoRawFile`, `GAITRiteLoaded`, `GAITRiteCycle`, `XsensProcessed`, `DelsysProcessed`, `CosmedProcessed`, and `AfoProcessed`.
-
-## Modality-Specific Code
-
-Use each modality folder for acquisition-system-specific logic. GAITRite files live in:
+Both R1 and R2 use:
 
 ```text
+Y:\BACPACS R2 - Spinal Stim\Pipeline_development\r2_pipeline.duckdb
+```
+
+Study separation is handled by table namespaces rather than separate database files.
+
+## Configuration layout
+
+Use these files for canonical pipeline behavior:
+
+```text
+Modality_Pipelines/config.json
+Modality_Pipelines/common/study_config.py
+Modality_Pipelines/common/table_registry.py
+Modality_Pipelines/common/lightweight_registry.py
+Modality_Pipelines/common/analysis_registry.json
+Modality_Pipelines/common/downstream_analysis.py
+```
+
+`config.json` contains base vocabulary and R2 defaults. `study_config.py` resolves selected-study values for R1 and R2. Do not duplicate visit codes, modality codes, folder names, or file naming patterns inside modality-specific scripts.
+
+## Current flow
+
+```text
+filesystem -> validation -> RawFile tables -> first-pass processors -> processed tables -> downstream analysis tables -> optional analysis registry
+```
+
+Raw files enter the system only through validation, registration, and first-pass modality processing. Downstream analyses read processed tables only.
+
+## CLI and GUI
+
+The CLI and GUI call the same backend API.
+
+```powershell
+.\bacpacs.cmd doctor
+.\bacpacs.cmd validate --study R2
+.\bacpacs.cmd register --study R2 --dry-run
+.\bacpacs.cmd process --study R2 --modality all
+.\bacpacs.cmd analyze build-all --study R2 --participant 001 --visit BL
+.\bacpacs.cmd analyses --study R2
+.\bacpacs.cmd gui
+```
+
+## Modality folders
+
+Use modality folders for acquisition-system-specific processing and parsing logic:
+
+```text
+Cosmed_Pipeline/
+Delsys_Pipeline/
 GAITRite_Pipeline/
-  gaitrite_columns.py
-  gaitrite_scidb_scaffold.py
+Xsens_Pipeline/
 ```
 
-`gaitrite_columns.py` holds GAITRite export column definitions.
-
-`gaitrite_scidb_scaffold.py` is a temporary scaffold for GAITRite raw-file discovery and early SciDB processing flow. It should eventually be split into manifest registration and real GAITRite preprocessing functions.
-
-Use modality-specific config files only for facts that belong to one acquisition system or parser. Examples may include:
+Future modality-specific analysis methods should live under the relevant modality folder, for example:
 
 ```text
-GAITRite_Pipeline/gaitrite_config.json
-Xsens_Pipeline/xsens_config.json
-Delsys_Pipeline/delsys_config.json
+Delsys_Pipeline/analyses/coactivation.py
 ```
 
-Good candidates for modality-specific config:
-
-```text
-export column names
-sheet names
-verified file extensions
-sampling rates, once confirmed
-parser options
-modality-specific QC thresholds
-```
-
-Do not put shared SOP vocabulary in modality-specific config files.
-
-## Current Structure
-
-```text
-Pipeline_development/
-  r2_pipeline.duckdb
-  update_scistack.ps1
-  GAITRite_processing-CH.py        # legacy/reference script, not current pipeline entry point
-  Modality_Pipelines/
-    README.md
-    config.json
-    common/
-      common_config.py
-      scidb_tables.py
-    GAITRite_Pipeline/
-      gaitrite_columns.py
-      gaitrite_scidb_scaffold.py
-    docs/
-      R2_SciStack_Manifest_Planning.docx
-```
-
-## Recommended Next Step
-
-Build the manifest/registration layer before preprocessing. The first goal should be to find files that already exist, parse their SOP file names, validate that their folder location agrees with the file name, and register valid raw files in SciDB as modality-specific raw-file entries such as `GAITRiteRawFile`, `XsensRawFile`, `DelsysRawFile`, or `CosmedRawFile`.
-
-Preprocessing should come after the manifest layer can answer:
-
-```text
-What files exist?
-Which files match the SOP naming convention?
-Which files are in the wrong folder?
-Which participant/visit/modality/outcome combinations are ready to process?
-```
-
-
-
+Then register the output table in the study-specific table file and register the analysis in `common/analysis_registry.json`.
 
