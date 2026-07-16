@@ -77,7 +77,8 @@ def main(argv: list[str] | None = None) -> int:
         print("validation: passed")
 
         dry_counts = register_raw_files(study=args.study, root=root, dry_run=True, database_path=database_path)
-        assert dry_counts["registered"] == 4, dry_counts
+        assert dry_counts["registered"] == 0, dry_counts
+        assert dry_counts["would_register"] == 4, dry_counts
         assert dry_counts["skipped"] == 0, dry_counts
         print("registration dry-run: passed")
 
