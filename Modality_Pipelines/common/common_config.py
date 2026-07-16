@@ -1,4 +1,4 @@
-﻿"""
+"""
 Common configuration helpers for the R2 Spinal Stim pipeline.
 
 Created on June 30th 2026
@@ -27,9 +27,12 @@ configuration.
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.json"
+_CONFIGURE_DATABASE_LOCK = threading.RLock()
 
 
 def load_config(config_path: str | Path | None = None) -> dict:
@@ -217,28 +220,53 @@ def configure_scistack_database(database_path: str | Path | None = None, study_c
     DuckDB permits only one writable connection to a database file per process.
     The Streamlit control panel may query SciDB before launching processing, so
     reuse the existing SciStack DatabaseManager when it already points at the
-    requested study database and schema.
+    requested study database and schema. New database initialization is guarded
+    because an empty DB can trigger concurrent metadata-table creation from UI
+    reruns and pipeline commands.
     """
     from scidb import configure_database, get_database
 
     resolved_database_path = Path(database_path or _study_value(study_config, "database_path", DATABASE_PATH))
     schema_keys = list(_study_value(study_config, "schema_keys", SCHEMA_KEYS))
 
-    try:
-        current_database = get_database()
-    except Exception:
-        current_database = None
+    def current_matching_database():
+        try:
+            current_database = get_database()
+        except Exception:
+            return None
 
-    if current_database is not None:
+        if current_database is None:
+            return None
         current_path = Path(getattr(current_database, "dataset_db_path", ""))
         current_schema_keys = list(getattr(current_database, "dataset_schema_keys", []))
         if current_path == resolved_database_path and current_schema_keys == schema_keys:
             if getattr(current_database, "_closed", False):
                 current_database.reopen()
             return current_database
+        return None
 
-    return configure_database(resolved_database_path, schema_keys)
+    current_database = current_matching_database()
+    if current_database is not None:
+        return current_database
+
+    last_error = None
+    for attempt in range(3):
+        with _CONFIGURE_DATABASE_LOCK:
+            current_database = current_matching_database()
+            if current_database is not None:
+                return current_database
+            try:
+                return configure_database(resolved_database_path, schema_keys)
+            except Exception as exc:
+                last_error = exc
+                if not _looks_like_duckdb_catalog_conflict(exc):
+                    raise
+        time.sleep(0.25 * (attempt + 1))
+
+    raise last_error
 
 
-
+def _looks_like_duckdb_catalog_conflict(exc: Exception) -> bool:
+    text = f"{exc.__class__.__name__}: {exc}"
+    return "TransactionException" in text and "Catalog write-write conflict" in text
 
