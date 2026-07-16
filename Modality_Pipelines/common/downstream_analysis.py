@@ -361,7 +361,7 @@ def export_analysis_tables(study: str = "R2", output_dir: str | Path | None = No
                 written[key] = str(output)
             continue
         output = output_root / f"{date_prefix}_{filename}"
-        _analysis_export_frame(df).to_csv(output, index=False)
+        _analysis_export_frame(df, table_key=key).to_csv(output, index=False)
         written[key] = str(output)
     if not written:
         raise AnalysisPreconditionError("No derived analysis tables exist for export.")
@@ -738,7 +738,7 @@ def _merge_side_signals(current: Mapping[str, Any], nxt: Mapping[str, Any], fiel
     return merged
 
 
-def _analysis_export_frame(df: pd.DataFrame) -> pd.DataFrame:
+def _analysis_export_frame(df: pd.DataFrame, table_key: str | None = None) -> pd.DataFrame:
     rows = []
     for _, row in df.iterrows():
         base = {key: _clean_schema_value(row.get(key)) for key in SCHEMA_KEYS if key in row}
@@ -746,10 +746,32 @@ def _analysis_export_frame(df: pd.DataFrame) -> pd.DataFrame:
             base["source_record_id"] = row["__record_id"]
         data = _row_value(row, "data")
         if isinstance(data, Mapping):
-            rows.append(base | _flatten_payload_for_export(data))
+            if table_key == "trial":
+                rows.append(base | _trial_export_payload(data))
+            else:
+                rows.append(base | _flatten_payload_for_export(data))
         else:
             rows.append(base)
     return pd.DataFrame(rows)
+
+
+def _trial_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
+    source_record_ids = _payload_value(data, "source_record_ids", {}) or {}
+    gaitrite_cycle_ids = source_record_ids.get("gaitrite_cycle", []) if isinstance(source_record_ids, Mapping) else []
+    gaitrite_cycles = _payload_value(data, "gaitrite_cycles", []) or []
+    payload = {
+        "trial_uid": _payload_value(data, "trial_uid"),
+        "xsens_source_record_id": source_record_ids.get("xsens") if isinstance(source_record_ids, Mapping) else None,
+        "delsys_source_record_id": source_record_ids.get("delsys") if isinstance(source_record_ids, Mapping) else None,
+        "gaitrite_loaded_source_record_id": source_record_ids.get("gaitrite_loaded") if isinstance(source_record_ids, Mapping) else None,
+        "gaitrite_cycle_source_record_ids": _export_value(gaitrite_cycle_ids),
+        "gaitrite_cycle_count": len(gaitrite_cycles),
+        "has_xsens": bool(_payload_value(data, "xsens")),
+        "has_delsys": bool(_payload_value(data, "delsys")),
+        "has_gaitrite_loaded": bool(_payload_value(data, "gaitrite_loaded")),
+        "created_at": _payload_value(data, "created_at"),
+    }
+    return payload
 
 
 def _flatten_payload_for_export(data: Mapping[str, Any]) -> dict[str, Any]:

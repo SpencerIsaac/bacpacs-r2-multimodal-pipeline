@@ -79,3 +79,41 @@ def test_normalize_cycles_hard_fails_without_visit_summary(tmp_path):
 def test_export_hard_fails_without_analysis_tables(tmp_path):
     with pytest.raises(da.AnalysisPreconditionError, match="No derived analysis tables exist"):
         da.export_analysis_tables(study="R2", database_path=tmp_path / "empty.duckdb", output_dir=tmp_path)
+
+
+def test_trial_export_is_manifest_not_full_signal_payload():
+    df = __import__("pandas").DataFrame([
+        {
+            "participant_number": "001",
+            "visit": "BL",
+            "test": "10MWT",
+            "condition": "AFO",
+            "speed": "FV",
+            "trial": "1",
+            "cycle": None,
+            "__record_id": "trial-record",
+            "data": {
+                "trial_uid": "001_BL_10MWT_AFO_FV_1",
+                "source_record_ids": {
+                    "xsens": "x1",
+                    "delsys": "d1",
+                    "gaitrite_loaded": "g1",
+                    "gaitrite_cycle": ["c1", "c2"],
+                },
+                "xsens": {"processed_kinematics": {"hip": list(range(200))}},
+                "delsys": {"processed_emg": {"LTA": list(range(200))}},
+                "gaitrite_loaded": {"rows": [1, 2]},
+                "gaitrite_cycles": [{"cycle": 1}, {"cycle": 2}],
+                "created_at": "2026-07-16T12:00:00",
+            },
+        }
+    ])
+
+    exported = da._analysis_export_frame(df, table_key="trial")
+
+    assert "xsens" not in exported.columns
+    assert "delsys" not in exported.columns
+    assert "gaitrite_loaded" not in exported.columns
+    assert "gaitrite_cycles" not in exported.columns
+    assert exported.loc[0, "gaitrite_cycle_count"] == 2
+    assert exported.loc[0, "xsens_source_record_id"] == "x1"
