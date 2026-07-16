@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bacpacs-pipeline"
+version = "0.1.0"
+description = "BACPACS multimodal ambulation pipeline CLI and backend"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb",
+    "numpy",
+    "openpyxl",
+    "pandas",
+    "scipy",
+    "streamlit>=1.59,<2",
+    "scicanonicalhash @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=scicanonicalhash",
+    "scidb @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=scidb",
+    "sciduckdb @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=sciduckdb",
+    "scifor @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=scifor",
+    "scilineage @ git+https://github.com/mtillman14/scistack.git@920363fac9ee30abc0f2dfd0c0312f524de7a899#subdirectory=scilineage",
+]
+
+[project.optional-dependencies]
+docs = [
+    "mkdocs",
+]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+bacpacs = "Modality_Pipelines.cli:main"
+
+[tool.setuptools]
+packages = [
+    "Modality_Pipelines",
+    "Modality_Pipelines.common",
+    "Modality_Pipelines.control_panel",
+    "Modality_Pipelines.Cosmed_Pipeline",
+    "Modality_Pipelines.Delsys_Pipeline",
+    "Modality_Pipelines.GAITRite_Pipeline",
+    "Modality_Pipelines.Xsens_Pipeline",
+]

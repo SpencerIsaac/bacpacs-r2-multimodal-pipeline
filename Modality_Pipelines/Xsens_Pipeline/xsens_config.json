@@ -1,12 +1,21 @@
 ﻿{
   "pipeline_metadata": {
-    "version": "1.0.0",
-    "last_updated": "2026-07-02"
+    "version": "1.1.0",
+    "last_updated": "2026-07-07"
   },
-  "XSENS_SAMPLING_FREQUENCY": 60,
+  "XSENS_SAMPLING_FREQUENCY": 100,
+  "EXCEL_SHEET_NAME": "Joint Angles XZY",
+  "COLUMN_NAMES": {
+    "RHIP": "Right Hip Flexion/Extension",
+    "RKNEE": "Right Knee Flexion/Extension",
+    "RANKLE": "Right Ankle Dorsiflexion/Plantarflexion",
+    "LHIP": "Left Hip Flexion/Extension",
+    "LKNEE": "Left Knee Flexion/Extension",
+    "LANKLE": "Left Ankle Dorsiflexion/Plantarflexion"
+  },
   "FILTER": {
     "LOWPASS_ORDER": 2,
     "LOWPASS_CUTOFF": 6,
-    "SAMPLING_FREQUENCY": 60
+    "SAMPLING_FREQUENCY": 100
   }
 }
