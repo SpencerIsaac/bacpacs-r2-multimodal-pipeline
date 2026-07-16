@@ -392,7 +392,53 @@ def _load_table(ctx, key: str) -> pd.DataFrame:
     except Exception as exc:
         if _looks_like_missing_table(exc):
             return pd.DataFrame()
+        if key == "issue" and _looks_like_json_decode(exc):
+            return _load_issue_table_direct(ctx, metadata)
         raise
+
+
+def _load_issue_table_direct(ctx, metadata: Mapping[str, Any]) -> pd.DataFrame:
+    """Load AnalysisIssue rows when SciDB JSON dtype inference rejects text columns."""
+    import duckdb
+
+    table_name = ANALYSIS_TABLES[ctx["study"]]["issue"]
+    db_path = str(ctx["config"].database_path)
+    where = []
+    params = []
+    for key, value in metadata.items():
+        if key in SCHEMA_KEYS and value is not None:
+            where.append(f'"{key}" = ?')
+            params.append(str(value))
+    sql = f'SELECT * FROM "{table_name}"'
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    try:
+        existing_con = getattr(getattr(ctx["db"], "_duck", None), "con", None)
+        if existing_con is not None:
+            raw = existing_con.execute(sql, params).fetchdf()
+        else:
+            with duckdb.connect(db_path, read_only=True) as con:
+                raw = con.execute(sql, params).fetchdf()
+    except Exception as exc:
+        if _looks_like_missing_table(exc):
+            return pd.DataFrame()
+        raise
+    if raw.empty:
+        return pd.DataFrame()
+    rows = []
+    for _, row in raw.iterrows():
+        data = {}
+        for column in ISSUE_EXPORT_COLUMNS:
+            if column in raw.columns:
+                data[column] = _decode_payload_value(row[column])
+        rows.append(
+            {
+                "__record_id": row.get("record_id"),
+                **{key: _clean_schema_value(row.get(key)) for key in SCHEMA_KEYS if key in raw.columns},
+                "data": data,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def _by_trial(df: pd.DataFrame) -> dict[tuple, list[pd.Series]]:
@@ -434,7 +480,7 @@ def _clean_schema_value(value):
     except (TypeError, ValueError):
         pass
     text = str(value)
-    return None if text in {"", "None", "nan", "NaN", "<NA>", "NaT"} else text
+    return None if text in {"", "None", "null", "nan", "NaN", "<NA>", "NaT"} else text
 
 
 def _safe_save(ctx, table_key: str, payload: Any, metadata: Mapping[str, Any]) -> bool:
@@ -505,6 +551,8 @@ def _payload_value(payload: Mapping[str, Any], key: str, default=None):
 def _decode_payload_value(value, default=None):
     if isinstance(value, str):
         text = value.strip()
+        if text == "null":
+            return None
         if text and text[0] in "[{\"":
             try:
                 return json.loads(text)
@@ -707,6 +755,11 @@ def _require_rows(df: pd.DataFrame, table_name: str, command_name: str) -> None:
 def _looks_like_missing_table(exc: Exception) -> bool:
     text = f"{type(exc).__name__}: {exc}"
     return "CatalogException" in text or "does not exist" in text or "not found" in text
+
+def _looks_like_json_decode(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}"
+    return "JSONDecodeError" in text or "Expecting value" in text
+
 
 
 def _looks_like_duplicate_record(exc: Exception) -> bool:
