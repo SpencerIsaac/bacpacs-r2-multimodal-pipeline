@@ -162,16 +162,25 @@ def selected_study() -> str:
 
 
 def apply_study_selection(study_choice: str | None) -> bool:
-    """Apply a sidebar study change and clear study-scoped UI state."""
+    """Apply a study change and clear study-scoped UI state."""
     if not study_choice or study_choice == selected_study():
         return False
     st.session_state["selected_study"] = study_choice
+    _clear_study_scoped_state()
+    return True
+
+
+def _clear_study_scoped_state() -> None:
     st.session_state.pop("manifest", None)
     st.session_state.pop("registration_result", None)
     st.session_state.pop("workflow_result", None)
     st.session_state.pop("workflow_manifest", None)
     st.session_state["cache_warm_key"] = None
-    return True
+
+
+def on_study_segment_change() -> None:
+    """Mirror the sidebar study widget into app state before page rendering."""
+    apply_study_selection(st.session_state.get("study_segment"))
 
 
 def render_top_bar() -> None:
@@ -220,9 +229,9 @@ def render_study_gate() -> None:
 
 def render_sidebar() -> None:
     with st.sidebar:
-        cfg = cached_study_summary(selected_study())
-        if "study_segment" not in st.session_state:
+        if st.session_state.get("study_segment") != selected_study():
             st.session_state["study_segment"] = selected_study()
+        cfg = cached_study_summary(selected_study())
 
         st.markdown(
             f"""
@@ -234,15 +243,14 @@ def render_sidebar() -> None:
             unsafe_allow_html=True,
         )
         st.markdown("<div class='drawer-label'>BACPACS study</div>", unsafe_allow_html=True)
-        study_choice = st.segmented_control(
+        st.segmented_control(
             "BACPACS study",
             options=["R1", "R2"],
             key="study_segment",
             label_visibility="collapsed",
             width="stretch",
+            on_change=on_study_segment_change,
         )
-        if apply_study_selection(study_choice):
-            st.rerun()
 
         st.markdown("<div class='drawer-nav'>", unsafe_allow_html=True)
         for page in PAGES:

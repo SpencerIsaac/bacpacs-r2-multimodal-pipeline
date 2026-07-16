@@ -212,6 +212,27 @@ def test_apply_study_selection_updates_selected_study_and_clears_study_state():
         st.session_state.update(original)
 
 
+def test_study_segment_callback_updates_selected_study_before_render():
+    import streamlit as st
+
+    from Modality_Pipelines.control_panel.app import on_study_segment_change
+
+    original = dict(st.session_state)
+    st.session_state.clear()
+    try:
+        st.session_state["selected_study"] = "R2"
+        st.session_state["study_segment"] = "R1"
+        st.session_state["workflow_result"] = {"old": "state"}
+        st.session_state["cache_warm_key"] = "R2:0"
+
+        on_study_segment_change()
+
+        assert st.session_state["selected_study"] == "R1"
+        assert "workflow_result" not in st.session_state
+        assert st.session_state["cache_warm_key"] is None
+    finally:
+        st.session_state.clear()
+        st.session_state.update(original)
 def test_render_stat_row_uses_native_metrics(monkeypatch):
     from Modality_Pipelines.control_panel import app
 
