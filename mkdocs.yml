@@ -9,6 +9,7 @@ nav:
       - First-time setup: user-guide/first-time-setup.md
       - Running the pipeline: user-guide/running-the-pipeline.md
       - CLI reference: user-guide/cli-reference.md
+      - Downstream analysis: user-guide/downstream-analysis.md
       - GUI control panel: user-guide/gui-control-panel.md
   - Developer guide:
       - Architecture: developer-guide/architecture.md

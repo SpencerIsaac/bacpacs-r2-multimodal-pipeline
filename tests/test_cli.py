@@ -70,7 +70,6 @@ def test_help_shows_command_usage(capsys):
     assert "usage: bacpacs <command> [options]" in output
     assert "bacpacs validate --study R2" in output
 
-
 def test_validate_help_shows_full_command_usage(capsys):
     parser = build_parser()
     with pytest.raises(SystemExit):

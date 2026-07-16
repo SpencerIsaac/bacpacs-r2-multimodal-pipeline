@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -50,12 +51,18 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch the Streamlit control panel.",
+    )
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
 
     subparsers.add_parser("studies", help="List configured studies.")
 
     doctor = subparsers.add_parser("doctor", help="Check this computer's network/repo environment.")
     doctor.add_argument("--study", choices=get_supported_studies(), help="Optional study namespace to check.")
+    doctor.add_argument("--performance", action="store_true", help="Time shared-drive and SciStack database probes for machine-to-machine comparison.")
 
     gui = subparsers.add_parser("gui", help="Launch the Streamlit control panel.")
     gui.add_argument("streamlit_args", nargs=argparse.REMAINDER, help="Extra arguments passed to Streamlit.")
@@ -91,12 +98,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_study(analyses)
     analyses.add_argument("--modality", help="Filter analyses by modality.")
 
-    analyze = subparsers.add_parser("analyze", usage="bacpacs analyze --study {R1,R2} --analysis <name> [filters] [options]", help="Run a registry-defined downstream analysis.")
+    analyze = subparsers.add_parser("analyze", usage="bacpacs analyze --study {R1,R2} <build-trial|build-cycles|finalize-visit|normalize-cycles|build-matched|export|build-all> [filters] [options]", help="Run downstream analysis table stages.")
     _add_study(analyze)
     _add_common_filters(analyze, include_modality=False)
-    analyze.add_argument("--analysis", required=True, help="Analysis registry key to run.")
+    analyze.add_argument("analysis_command", nargs="?", help="Derived analysis stage to run, or omit when using --analysis for registry analyses.")
+    analyze.add_argument("--analysis", help="Legacy registry analysis key to run.")
     analyze.add_argument("--dry-run", action="store_true", help="Ask SciStack to plan analysis without saving outputs.")
     analyze.add_argument("--database-path", help="Override the SciDB/DuckDB database path.")
+    analyze.add_argument("--output-dir", help="Output directory for derived analysis exports.")
     analyze.add_argument("--overwrite", action="store_true", help="Recompute even if outputs already exist.")
     analyze.add_argument("--include-processed", action="store_true", help="Do not skip already computed records.")
 
@@ -130,6 +139,16 @@ def _print_mapping(title: str, rows: dict[str, Any]) -> None:
         print(f"  {key}: {value}")
 
 
+def _print_progress(message: str) -> float:
+    print(message, flush=True)
+    return time.perf_counter()
+
+
+def _print_elapsed(start_time: float, label: str = "Done") -> None:
+    elapsed = time.perf_counter() - start_time
+    print(f"{label} in {elapsed:.1f}s", flush=True)
+
+
 def _cmd_studies(args: argparse.Namespace) -> int:
     from Modality_Pipelines.common.study_config import load_study_config
 
@@ -144,6 +163,62 @@ def _cmd_studies(args: argparse.Namespace) -> int:
 
 def _format_path_status(path: Path) -> str:
     return "ok" if path.exists() else "missing"
+
+
+def _time_probe(label: str, fn) -> None:
+    start_time = time.perf_counter()
+    try:
+        detail = fn()
+    except Exception as exc:  # pragma: no cover - diagnostic output path
+        elapsed = time.perf_counter() - start_time
+        print(f"  {label}: error in {elapsed:.2f}s ({exc.__class__.__name__}: {exc})")
+        return
+    elapsed = time.perf_counter() - start_time
+    print(f"  {label}: {detail} in {elapsed:.2f}s")
+
+
+def _count_first_dirs(root: Path, pattern: str, limit: int = 25) -> str:
+    count = 0
+    for candidate in root.glob(pattern):
+        if candidate.is_dir():
+            count += 1
+        if count >= limit:
+            break
+    return f"found {count} participant folder(s), capped at {limit}"
+
+
+def _count_first_children(root: Path, limit: int = 25) -> str:
+    count = 0
+    for _ in root.iterdir():
+        count += 1
+        if count >= limit:
+            break
+    return f"listed {count} item(s), capped at {limit}"
+
+
+def _print_performance_probes(studies: list[str]) -> None:
+    from Modality_Pipelines.common.common_config import configure_scistack_database
+    from Modality_Pipelines.common.study_config import load_study_config
+
+    print("Performance probes")
+    print("Compare these timings on both computers. Large gaps usually indicate mapped-drive, VPN, antivirus, or SMB caching differences.")
+    for study in studies:
+        config = load_study_config(study)
+        print(f"{config.study}: {config.project_name}")
+        _time_probe("subject root exists", lambda config=config: "ok" if config.subject_data_root.exists() else "missing")
+        if config.subject_data_root.exists():
+            _time_probe(
+                "enumerate participant folders",
+                lambda config=config: _count_first_dirs(config.subject_data_root, config.participant_glob),
+            )
+        _time_probe("database path exists", lambda config=config: "ok" if config.database_path.exists() else "missing")
+        if config.database_path.parent.exists():
+            _time_probe("database folder listing", lambda config=config: _count_first_children(config.database_path.parent))
+        if config.database_path.exists():
+            _time_probe(
+                "SciStack configure/list variables",
+                lambda config=config: f"{len(configure_scistack_database(study_config=config).list_variables())} variable type(s)",
+            )
 
 
 def _cmd_doctor(args: argparse.Namespace) -> int:
@@ -174,6 +249,8 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print(f"  subject_data_root: {config.subject_data_root} [{_format_path_status(config.subject_data_root)}]")
         print(f"  database_path: {config.database_path} [{_format_path_status(config.database_path)}]")
         print(f"  database_folder: {database_parent} [{_format_path_status(database_parent)}]")
+    if args.performance:
+        _print_performance_probes(list(studies))
     return 0
 
 
@@ -224,7 +301,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     from Modality_Pipelines.common.manifest import validate_study_files
 
     filters = _clean_filters(_filter_kwargs(args))
+    start_time = _print_progress(f"Validating raw files for study={args.study}...")
     df = validate_study_files(study=args.study, root=args.root, **filters)
+    _print_elapsed(start_time, "Validation complete")
     print(f"Validation manifest: {len(df)} row(s)")
     if args.output:
         output_path = Path(args.output)
@@ -242,6 +321,9 @@ def _cmd_register(args: argparse.Namespace) -> int:
     from Modality_Pipelines.common.manifest import register_raw_files
 
     filters = _clean_filters(_filter_kwargs(args))
+    start_time = _print_progress(
+        f"Preparing raw-file registration for study={args.study} ({'dry-run' if args.dry_run else 'write'})..."
+    )
     counts = register_raw_files(
         study=args.study,
         root=args.root,
@@ -250,6 +332,7 @@ def _cmd_register(args: argparse.Namespace) -> int:
         database_path=args.database_path,
         **filters,
     )
+    _print_elapsed(start_time, "Registration step complete")
     mode = "dry-run" if args.dry_run else "write"
     print(f"Raw-file registration ({mode})")
     _print_mapping("Counts", counts)
@@ -261,6 +344,9 @@ def _cmd_process(args: argparse.Namespace) -> int:
 
     filters = _clean_filters(_filter_kwargs(args))
     modality = filters.pop("modality", args.modality)
+    start_time = _print_progress(
+        f"{'Planning' if args.dry_run else 'Running'} processing for study={args.study}, modality={modality}..."
+    )
     result = run_modality_processing(
         study=args.study,
         modality=modality,
@@ -270,6 +356,7 @@ def _cmd_process(args: argparse.Namespace) -> int:
         database_path=args.database_path,
         **filters,
     )
+    _print_elapsed(start_time, "Processing step complete")
     print(f"Processing dispatched for study={args.study}, modality={modality}")
     print(result)
     return 0
@@ -307,10 +394,50 @@ def _cmd_analyses(args: argparse.Namespace) -> int:
 
 
 def _cmd_analyze(args: argparse.Namespace) -> int:
-    from Modality_Pipelines.common.analysis_registry import run_registered_analysis
-
     filters = _clean_filters(_filter_kwargs(args))
     filters.pop("modality", None)
+    command = getattr(args, "analysis_command", None)
+    derived_commands = {
+        "build-trial": "build_trial_analysis",
+        "build-cycles": "build_cycle_unmatched",
+        "finalize-visit": "finalize_visit_summary",
+        "normalize-cycles": "normalize_cycles_to_visit",
+        "build-matched": "build_cycle_matched",
+        "export": "export_analysis_tables",
+        "build-all": "build_all",
+    }
+
+    if command in derived_commands:
+        from Modality_Pipelines.common import downstream_analysis
+
+        fn = getattr(downstream_analysis, derived_commands[command])
+        kwargs = {"study": args.study, "database_path": args.database_path, **filters}
+        if command in {"export", "build-all"}:
+            kwargs["output_dir"] = args.output_dir
+        start_time = _print_progress(f"Running downstream analysis stage {command} for study={args.study}...")
+        try:
+            result = fn(**kwargs)
+        except downstream_analysis.AnalysisPreconditionError as exc:
+            print(f"Analysis precondition failed: {exc}", file=sys.stderr)
+            return 2
+        _print_elapsed(start_time, "Analysis stage complete")
+        print(result)
+        return 0
+
+    if command and not args.analysis:
+        valid = ", ".join(sorted(derived_commands))
+        print(f"Unknown analysis command {command!r}. Expected one of: {valid}; or use --analysis <registry-key>.", file=sys.stderr)
+        return 2
+
+    if not args.analysis:
+        print("analyze requires a derived stage name or --analysis <registry-key>.", file=sys.stderr)
+        return 2
+
+    from Modality_Pipelines.common.analysis_registry import run_registered_analysis
+
+    start_time = _print_progress(
+        f"{'Planning' if args.dry_run else 'Running'} analysis for study={args.study}, analysis={args.analysis}..."
+    )
     result = run_registered_analysis(
         study=args.study,
         analysis=args.analysis,
@@ -320,10 +447,10 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         database_path=args.database_path,
         **filters,
     )
+    _print_elapsed(start_time, "Analysis step complete")
     print(f"Analysis dispatched for study={args.study}, analysis={args.analysis}")
     print(result)
     return 0
-
 
 def dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     _require_study(args, parser)

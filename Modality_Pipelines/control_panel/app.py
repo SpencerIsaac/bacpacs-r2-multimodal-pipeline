@@ -6,7 +6,9 @@ Run from the Pipeline_development folder:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+import html
+from io import BytesIO
 import math
 
 import streamlit as st
@@ -59,7 +61,7 @@ def cached_study_summary(study: str) -> dict[str, str]:
     }
 
 
-@st.cache_data(ttl=10, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner="Loading stage map...")
 def cached_ledger_stage_map(study: str) -> list[dict]:
     from Modality_Pipelines.control_panel.db_service import get_ledger_stage_map
 
@@ -86,6 +88,24 @@ def cached_lineage_records(study: str, refresh_token: int):
     from Modality_Pipelines.control_panel.db_service import get_lineage_records
 
     return get_lineage_records(study=study)
+
+
+
+def _stage_map_display(stage_map: list[dict]) -> "pd.DataFrame":
+    import pandas as pd
+
+    rows = []
+    for modality in stage_map:
+        stages = modality.get("stages", [])
+        rows.append(
+            {
+                "key": modality.get("key", ""),
+                "label": modality.get("label", ""),
+                "stage flow": " -> ".join(stage.get("label", "") for stage in stages),
+                "tables": ", ".join(stage.get("table", "") for stage in stages),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def warm_selected_study_caches() -> None:
@@ -134,7 +154,6 @@ def main() -> None:
     elif page == "Lineage / records":
         render_lineage()
 
-    warm_selected_study_caches()
 
 
 def selected_study() -> str:
@@ -147,7 +166,6 @@ def apply_study_selection(study_choice: str | None) -> bool:
     if not study_choice or study_choice == selected_study():
         return False
     st.session_state["selected_study"] = study_choice
-    st.session_state["study_segment"] = study_choice
     st.session_state.pop("manifest", None)
     st.session_state.pop("registration_result", None)
     st.session_state.pop("workflow_result", None)
@@ -194,7 +212,7 @@ def render_study_gate() -> None:
                 """,
                 unsafe_allow_html=True,
             )
-            if st.button(f"Open {study_key}", key=f"open_{study_key}", type="primary", use_container_width=True):
+            if st.button(f"Open {study_key}", key=f"open_{study_key}", type="primary", width="stretch"):
                 st.session_state["selected_study"] = study_key
                 st.session_state["study_segment"] = study_key
                 st.rerun()
@@ -233,7 +251,7 @@ def render_sidebar() -> None:
             if st.button(
                 page,
                 key=f"nav_{page}",
-                use_container_width=True,
+                width="stretch",
                 type=button_type,
                 icon=NAV_ICONS.get(page),
             ):
@@ -245,7 +263,7 @@ def render_sidebar() -> None:
 
 def render_pipeline_workflow() -> None:
     st.header("Pipeline workflow")
-    st.caption("Run the same backend actions exposed by the BACPACS CLI. Preview steps are read-only; write steps require confirmation.")
+    st.caption("Run the same backend actions exposed by the BACPACS CLI. Preview steps are read-only; write steps are available directly.")
 
     filters = _workflow_filters()
     _render_filter_summary(filters)
@@ -263,7 +281,7 @@ def render_pipeline_workflow() -> None:
         if result and result[0] == "Setup check":
             import pandas as pd
 
-            st.dataframe(pd.DataFrame(result[1]), use_container_width=True, hide_index=True)
+            _render_dataframe(pd.DataFrame(result[1]), width="stretch", hide_index=True)
 
     with validate_tab:
         st.markdown("#### Dry-run validation")
@@ -282,17 +300,15 @@ def render_pipeline_workflow() -> None:
     with register_tab:
         st.markdown("#### RawFile registration")
         st.caption("Mirrors `bacpacs register`. Dry-run previews are read-only; registration writes RawFile records for valid new files.")
-        cols = st.columns([1, 1, 3])
+        cols = st.columns([1, 3])
         with cols[0]:
-            preview = st.button("Preview registration", type="primary", key="workflow_register_preview", use_container_width=True)
+            preview = st.button("Preview registration", key="workflow_register_preview", width="stretch")
         with cols[1]:
-            confirm_register = st.checkbox("Confirm write", key="workflow_confirm_register")
-        with cols[2]:
             write = st.button(
                 "Register valid files",
+                type="primary",
                 key="workflow_register_write",
-                disabled=not confirm_register,
-                use_container_width=False,
+                width="content",
             )
         if preview or write:
             from Modality_Pipelines.common.manifest import register_raw_files
@@ -308,16 +324,14 @@ def render_pipeline_workflow() -> None:
     with process_tab:
         st.markdown("#### First-pass modality processing")
         st.caption("Mirrors `bacpacs process`. Processors read registered RawFile records and write processed tables.")
-        process_cols = st.columns([1.2, 1, 1, 2])
+        process_cols = st.columns([1.2, 1, 2])
         with process_cols[0]:
             process_modality = st.selectbox("Modality", ["all", *MODALITIES], key="workflow_process_modality")
         with process_cols[1]:
             overwrite = st.checkbox("Overwrite", key="workflow_process_overwrite")
         with process_cols[2]:
-            confirm_process = st.checkbox("Confirm write", key="workflow_confirm_process")
-        with process_cols[3]:
-            preview_process = st.button("Preview processing", type="primary", key="workflow_process_preview")
-            run_process = st.button("Run processing", key="workflow_process_run", disabled=not confirm_process)
+            preview_process = st.button("Preview processing", key="workflow_process_preview")
+            run_process = st.button("Run processing", type="primary", key="workflow_process_run")
         if preview_process or run_process:
             from Modality_Pipelines.common.processing import run_modality_processing
 
@@ -346,16 +360,14 @@ def render_pipeline_workflow() -> None:
         else:
             _render_analysis_table(analyses)
             analysis_names = [row["name"] for row in analyses]
-            analysis_cols = st.columns([1.4, 1, 1, 2])
+            analysis_cols = st.columns([1.4, 1, 2])
             with analysis_cols[0]:
                 analysis = st.selectbox("Analysis", analysis_names, key="workflow_analysis_name")
             with analysis_cols[1]:
                 overwrite_analysis = st.checkbox("Overwrite", key="workflow_analysis_overwrite")
             with analysis_cols[2]:
-                confirm_analysis = st.checkbox("Confirm write", key="workflow_confirm_analysis")
-            with analysis_cols[3]:
-                preview_analysis = st.button("Preview analysis", type="primary", key="workflow_analysis_preview")
-                run_analysis = st.button("Run analysis", key="workflow_analysis_run", disabled=not confirm_analysis)
+                preview_analysis = st.button("Preview analysis", key="workflow_analysis_preview")
+                run_analysis = st.button("Run analysis", type="primary", key="workflow_analysis_run")
             if preview_analysis or run_analysis:
                 from Modality_Pipelines.common.analysis_registry import run_registered_analysis
 
@@ -382,17 +394,17 @@ def render_pipeline_workflow() -> None:
         st.write(f"Study: `{cfg['study']}`")
         st.write(f"Database: `{cfg['database_path']}`")
         stage_map = cached_ledger_stage_map(selected_study())
-        st.dataframe(stage_map, use_container_width=True, hide_index=True)
+        _render_dataframe(_stage_map_display(stage_map), width="stretch", hide_index=True)
         ledger = cached_processing_ledger(selected_study(), st.session_state["refresh_token"])
         if ledger.empty:
             _empty_state("No registered raw or processed records were found in the SciDB database.")
         else:
-            st.dataframe(ledger, use_container_width=True, hide_index=True)
+            _render_dataframe(ledger, width="stretch", hide_index=True)
 def render_ledger() -> None:
     st.header("Processing ledger")
     cols = st.columns([1, 5])
     with cols[0]:
-        if st.button("Refresh", use_container_width=True):
+        if st.button("Refresh", width="stretch"):
             st.session_state["refresh_token"] += 1
             cached_processing_ledger.clear()
             cached_config_state.clear()
@@ -420,7 +432,7 @@ def render_ledger() -> None:
             display = ledger[["participant", "ledger_status", "ledger_reason"]]
         else:
             display = ledger
-        st.dataframe(_style_status(display), use_container_width=True, hide_index=True)
+        _render_dataframe(_style_status(display), width="stretch", hide_index=True)
 
 
 def render_raw_file_review() -> None:
@@ -430,9 +442,9 @@ def render_raw_file_review() -> None:
     selected_modalities = _modality_selector()
     actions = st.columns([0.9, 0.9, 5])
     with actions[0]:
-        scan = st.button("Scan", type="primary", use_container_width=True)
+        scan = st.button("Scan", type="primary", width="stretch")
     with actions[1]:
-        clear = st.button("Clear", use_container_width=True)
+        clear = st.button("Clear", width="stretch")
 
     if clear:
         st.session_state.pop("manifest", None)
@@ -442,10 +454,11 @@ def render_raw_file_review() -> None:
     if scan:
         from Modality_Pipelines.control_panel.pipeline_api import preview_raw_file_manifest
 
-        st.session_state["manifest"] = preview_raw_file_manifest(
-            modality_keys=selected_modalities,
-            study=selected_study(),
-        )
+        with st.spinner("Scanning raw-file folders..."):
+            st.session_state["manifest"] = preview_raw_file_manifest(
+                modality_keys=selected_modalities,
+                study=selected_study(),
+            )
         st.session_state.pop("registration_result", None)
 
     manifest = st.session_state.get("manifest")
@@ -496,10 +509,10 @@ def render_raw_file_review() -> None:
         display = manifest[manifest["status"] != "valid"]
 
     display = _manifest_display(display)
-    st.dataframe(display, use_container_width=True, hide_index=True)
+    _render_dataframe(display, width="stretch", hide_index=True)
     with st.expander("Full paths"):
         path_cols = [col for col in ["file_name", "file_path"] if col in manifest.columns]
-        st.dataframe(manifest[path_cols], use_container_width=True, hide_index=True)
+        _render_dataframe(manifest[path_cols], width="stretch", hide_index=True)
 
 
 def render_configuration() -> None:
@@ -556,7 +569,7 @@ def render_configuration() -> None:
         st.caption("Flattened JSON audit table")
         raw = config.copy()
         raw["source_path"] = raw["source_path"].map(_truncate_path)
-        st.dataframe(raw, use_container_width=True, hide_index=True)
+        _render_dataframe(raw, width="stretch", hide_index=True)
 
 
 def render_lineage() -> None:
@@ -565,7 +578,32 @@ def render_lineage() -> None:
     if lineage.empty:
         _empty_state("No lineage records were found.")
         return
-    st.dataframe(lineage, use_container_width=True, hide_index=True)
+
+    st.download_button(
+        "Export XLSX",
+        data=_lineage_export_bytes(lineage),
+        file_name=_lineage_export_filename(),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="content",
+    )
+    _render_dataframe(lineage, width="stretch", hide_index=True)
+
+
+
+def _lineage_export_filename(today: date | None = None) -> str:
+    export_date = today or date.today()
+    return f"{export_date:%Y-%m-%d}_bacpacs_lineage.xlsx"
+
+
+
+def _lineage_export_bytes(lineage) -> bytes:
+    import pandas as pd
+
+    output = BytesIO()
+    export = _arrow_safe_dataframe(lineage)
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        export.to_excel(writer, sheet_name="lineage", index=False)
+    return output.getvalue()
 
 
 
@@ -651,7 +689,7 @@ def _render_validation_manifest(manifest) -> None:
     if counts:
         _render_stat_row([(key.title(), value, "attention" if key != "valid" else "default") for key, value in counts.items()])
     display = _manifest_display(manifest).head(200)
-    st.dataframe(display, use_container_width=True, hide_index=True)
+    _render_dataframe(display, width="stretch", hide_index=True)
     if len(manifest) > len(display):
         st.caption(f"Showing first {len(display)} of {len(manifest)} rows. Use the CLI `--output` option for a full CSV export.")
 
@@ -662,17 +700,43 @@ def _render_workflow_result(allowed_titles: list[str]) -> None:
         return
     title, payload = result
     st.markdown(f"#### {title}")
-    if isinstance(payload, dict):
-        _render_mapping_payload(payload)
-    else:
-        st.json(_json_safe(payload))
+    _render_result_payload(payload)
 
 
-def _render_mapping_payload(payload: dict) -> None:
+def _render_result_payload(payload, label: str | None = None) -> None:
     import pandas as pd
 
-    rows = [{"field": str(key), "value": _compact_value(value)} for key, value in payload.items()]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    if label:
+        st.markdown(f"##### {label}")
+
+    if isinstance(payload, pd.DataFrame):
+        if payload.empty:
+            st.info("No matching records were returned. Check that raw files are registered and that the selected filters match registered records.")
+        else:
+            _render_dataframe(payload, width="stretch", hide_index=True)
+        return
+
+    if isinstance(payload, dict):
+        scalar_rows = []
+        nested_items = []
+        for key, value in payload.items():
+            if _is_scalar_result(value):
+                scalar_rows.append({"field": str(key), "value": _compact_value(value)})
+            else:
+                nested_items.append((str(key), value))
+        if scalar_rows:
+            _render_dataframe(pd.DataFrame(scalar_rows), width="stretch", hide_index=True)
+        for nested_label, nested_value in nested_items:
+            _render_result_payload(nested_value, nested_label)
+        if not scalar_rows and not nested_items:
+            st.info("No result details were returned.")
+        return
+
+    st.json(_json_safe(payload))
+
+
+def _is_scalar_result(value) -> bool:
+    return isinstance(value, (str, int, float, bool)) or value is None
 
 
 def _render_analysis_table(analyses: list[dict]) -> None:
@@ -689,7 +753,7 @@ def _render_analysis_table(analyses: list[dict]) -> None:
                 "description": row.get("description", ""),
             }
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    _render_dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def _compact_value(value) -> str:
@@ -721,23 +785,23 @@ def _refresh_database_caches() -> None:
     st.session_state["cache_warm_key"] = None
 def _render_participant_flow(ledger: pd.DataFrame, stage_map: list[dict]) -> None:
     for _, row in ledger.iterrows():
-        status = str(row.get("ledger_status", "empty"))
-        reason = str(row.get("ledger_reason", ""))
+        status = html.escape(str(row.get("ledger_status", "empty")))
+        reason = html.escape(str(row.get("ledger_reason", "")))
+        participant = html.escape(str(row["participant"]))
         lanes = "".join(_modality_lane(row, modality) for modality in stage_map)
         st.markdown(
-            f"""
-            <section class="participant-flow participant-flow--{status}">
-                <div class="participant-flow__header">
-                    <div>
-                        <div class="participant-flow__label">Participant</div>
-                        <div class="participant-flow__title">{row['participant']}</div>
-                    </div>
-                    <div class="participant-flow__state participant-flow__state--{status}">{status.title()}</div>
-                </div>
-                <div class="participant-flow__reason">{reason}</div>
-                <div class="modality-lanes">{lanes}</div>
-            </section>
-            """,
+            (
+                f'<section class="participant-flow participant-flow--{status}">'
+                '<div class="participant-flow__header"><div>'
+                '<div class="participant-flow__label">Participant</div>'
+                f'<div class="participant-flow__title">{participant}</div>'
+                '</div>'
+                f'<div class="participant-flow__state participant-flow__state--{status}">{status.title()}</div>'
+                '</div>'
+                f'<div class="participant-flow__reason">{reason}</div>'
+                f'<div class="participant-flow__lanes-scroll"><div class="modality-lanes">{lanes}</div></div>'
+                '</section>'
+            ),
             unsafe_allow_html=True,
         )
 
@@ -747,23 +811,25 @@ def _modality_lane(row: pd.Series, modality: dict) -> str:
     analysis_stage = _analysis_stage(modality)
     stage_html = "".join(_stage_chip(stage["label"], _count(row, stage["column"])) for stage in stages)
     stage_html += _analysis_chip(row, stages[0]["column"], analysis_stage["column"])
-    lane_status = _lane_status(row, stages[0]["column"], analysis_stage["column"])
-    return f"""
-        <div class="modality-lane modality-lane--{lane_status}">
-            <div class="modality-lane__title">{modality['label']}</div>
-            <div class="stage-stack">{stage_html}</div>
-        </div>
-    """
+    lane_status = html.escape(_lane_status(row, stages[0]["column"], analysis_stage["column"]))
+    label = html.escape(str(modality["label"]))
+    return (
+        f'<div class="modality-lane modality-lane--{lane_status}">'
+        f'<div class="modality-lane__title">{label}</div>'
+        f'<div class="stage-stack">{stage_html}</div>'
+        '</div>'
+    )
 
 
 def _stage_chip(label: str, count: int) -> str:
     state = "complete" if count > 0 else "empty"
-    return f"""
-        <div class="stage-chip stage-chip--{state}">
-            <span class="stage-chip__name">{label}</span>
-            <span class="stage-chip__value">{count}</span>
-        </div>
-    """
+    safe_label = html.escape(str(label))
+    return (
+        f'<div class="stage-chip stage-chip--{state}">'
+        f'<span class="stage-chip__name">{safe_label}</span>'
+        f'<span class="stage-chip__value">{count}</span>'
+        '</div>'
+    )
 
 
 def _analysis_chip(row: pd.Series, raw_column: str, analysis_column: str) -> str:
@@ -778,12 +844,12 @@ def _analysis_chip(row: pd.Series, raw_column: str, analysis_column: str) -> str
     else:
         state = "empty"
         value = "No data"
-    return f"""
-        <div class="stage-chip stage-chip--{state}">
-            <span class="stage-chip__name">Analysis</span>
-            <span class="stage-chip__value">{value}</span>
-        </div>
-    """
+    return (
+        f'<div class="stage-chip stage-chip--{state}">'
+        '<span class="stage-chip__name">Analysis</span>'
+        f'<span class="stage-chip__value">{value}</span>'
+        '</div>'
+    )
 
 
 def _analysis_stage(modality: dict) -> dict:
@@ -821,7 +887,7 @@ def _modality_selector() -> list[str]:
         label = DISPLAY_MODALITIES[modality]
         button_type = "primary" if active else "secondary"
         with col:
-            if st.button(label, key=f"modality_{modality}", type=button_type, use_container_width=True):
+            if st.button(label, key=f"modality_{modality}", type=button_type, width="stretch"):
                 if active:
                     selected = [item for item in selected if item != modality]
                 else:
@@ -878,23 +944,18 @@ def _render_config_table(rows: pd.DataFrame) -> None:
         return
     display = rows[["key", "value"]].copy()
     display = display.rename(columns={"key": "setting", "value": "value"})
-    st.dataframe(display, use_container_width=True, hide_index=True)
+    _render_dataframe(display, width="stretch", hide_index=True)
 
 
 def _render_stat_row(stats: list[tuple[str, int, str]]) -> None:
-    items = []
-    for label, value, tone in stats:
-        tone_class = " stat-pair__value--attention" if tone == "attention" else ""
-        items.append(
-            f"""
-            <div class="stat-pair">
-                <div class="stat-pair__label">{label}</div>
-                <div class="stat-pair__value{tone_class}">{value}</div>
-            </div>
-            """
-        )
-    st.markdown(f"<div class='stat-row'>{''.join(items)}</div>", unsafe_allow_html=True)
-
+    if not stats:
+        return
+    columns = st.columns(len(stats))
+    for column, (label, value, tone) in zip(columns, stats):
+        with column:
+            st.metric(label, value)
+            if tone == "attention" and value:
+                st.caption("Needs attention")
 
 def _empty_state(message: str) -> None:
     st.markdown(f"<div class='empty-state'>{message}</div>", unsafe_allow_html=True)
@@ -909,6 +970,36 @@ def _truncate_path(path: str, max_chars: int = 72) -> str:
 def _sentence_config_name(name: str) -> str:
     return name.replace(" Config", " config")
 
+
+def _render_dataframe(data, **kwargs) -> None:
+    st.dataframe(_arrow_safe_dataframe(data), **kwargs)
+
+
+def _arrow_safe_dataframe(data):
+    import pandas as pd
+
+    if not isinstance(data, pd.DataFrame):
+        return data
+    display = data.copy()
+    for column in display.columns:
+        if display[column].dtype == "object":
+            display[column] = display[column].map(_display_cell_value)
+    return display
+
+
+def _display_cell_value(value) -> str:
+    import pandas as pd
+
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (str, int, float, bool)):
+        return str(value)
+    return _compact_value(value)
 
 def _style_status(df: pd.DataFrame):
     if "ledger_status" not in df.columns:
@@ -1333,12 +1424,28 @@ def _inject_css() -> None:
             min-height: 1rem;
         }
 
+        .participant-flow__lanes-scroll {
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-bottom: 0.35rem;
+        }
+
+        .participant-flow__lanes-scroll::-webkit-scrollbar {
+            height: 0.5rem;
+        }
+
+        .participant-flow__lanes-scroll::-webkit-scrollbar-thumb {
+            background: #D1D1D6;
+            border-radius: 999px;
+        }
+
         .modality-lanes {
             display: grid;
             gap: 0.75rem;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(175px, 1fr));
+            min-width: 960px;
         }
-
         .modality-lane {
             background: #FAFAFB;
             border: 1px solid var(--hairline);
@@ -1424,16 +1531,8 @@ def _inject_css() -> None:
             color: var(--status-complete);
         }
 
-        @media (max-width: 1200px) {
-            .modality-lanes {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
 
         @media (max-width: 760px) {
-            .modality-lanes {
-                grid-template-columns: 1fr;
-            }
             .top-bar__path {
                 display: none;
             }

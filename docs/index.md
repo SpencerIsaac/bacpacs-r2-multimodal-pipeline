@@ -41,6 +41,9 @@ Replace `R2` with `R1` when operating on R1 data.
 - `Modality_Pipelines/config.json`: base pipeline vocabulary and R2 defaults.
 - `Modality_Pipelines/common/study_config.py`: study-specific R1/R2 overlays.
 - `Modality_Pipelines/common/table_registry.py`: runtime table routing.
-- `Modality_Pipelines/common/analysis_registry.json`: downstream analysis discovery.
+- `Modality_Pipelines/common/analysis_registry.json`: registry-defined downstream analysis discovery.
+- `Modality_Pipelines/common/downstream_analysis.py`: fixed multimodal downstream table layer.
+- `analysis_scripts/export_scidb_table_for_matlab.py`: Python helper for MATLAB/Python table exports.
+- `analysis_scripts/export_scidb_table_to_mat.m`: MATLAB wrapper for exporting SciDB tables to `.mat`.
 - `docs/source_of_truth.json`: documentation freshness metadata.
 - `scripts/check_docs_freshness.py`: automated drift check.

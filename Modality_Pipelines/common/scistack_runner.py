@@ -11,8 +11,14 @@ Shared SciStack execution helpers for modality pipeline stages.
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
+import os
+from pathlib import Path
 from typing import Any
+
+import pandas as pd
 
 import scidb
 
@@ -71,6 +77,39 @@ def split_stage_kwargs(kwargs: Mapping[str, Any]) -> tuple[dict[str, Any], dict[
     return schema_filters, stage_options
 
 
+@contextmanager
+def _redirect_scifor_diag_log():
+    """Patch SciStack diagnostic log paths/encodings during stage execution.
+
+    Some scifor builds append to /tmp/scihist_diag.log, which can be missing or
+    unwritable on Windows. SciDB also opens scidb.log without an explicit
+    encoding, so Windows may choose cp1252 and fail on Unicode log separators.
+    """
+    log_dir = Path(__file__).resolve().parents[2] / ".scistack_logs"
+    log_dir.mkdir(exist_ok=True)
+    redirected_path = log_dir / "scihist_diag.log"
+    original_open = builtins.open
+
+    def redirected_open(file, *args, **kwargs):
+        target = file
+        if isinstance(file, (str, os.PathLike)) and os.fspath(file).replace("\\", "/") == "/tmp/scihist_diag.log":
+            target = redirected_path
+
+        mode = args[0] if args else kwargs.get("mode", "r")
+        is_text_write = "b" not in mode and any(flag in mode for flag in ("a", "w", "x"))
+        if is_text_write and "encoding" not in kwargs:
+            kwargs["encoding"] = "utf-8"
+            kwargs.setdefault("errors", "replace")
+
+        return original_open(target, *args, **kwargs)
+
+    builtins.open = redirected_open
+    try:
+        yield
+    finally:
+        builtins.open = original_open
+
+
 def run_scistack_stage(
     fn: Callable,
     inputs: Mapping[str, Any],
@@ -95,22 +134,50 @@ def run_scistack_stage(
     ``scidb.for_each``.
     """
     study_config = load_study_config(study)
-    configure_scistack_database(database_path, study_config=study_config)
+    database = configure_scistack_database(database_path, study_config=study_config)
     resolved_schema_filters = dict(schema_filters or {})
     resolved_schema_filters["_schema_keys"] = study_config.schema_keys
     schema_filter = build_schema_filter(resolved_schema_filters)
 
-    return scidb.for_each(
-        fn,
-        inputs=dict(inputs),
-        outputs=list(outputs),
-        dry_run=dry_run,
-        save=save,
-        as_table=as_table,
-        distribute=distribute,
-        where=where,
-        track_lineage=track_lineage,
-        skip_computed=skip_computed,
-        schema_filter=schema_filter,
-        schema_level=list(study_config.schema_keys),
-    )
+    if _inputs_are_empty(database, inputs):
+        return pd.DataFrame()
+
+    with _redirect_scifor_diag_log():
+        return scidb.for_each(
+            fn,
+            inputs=dict(inputs),
+            outputs=list(outputs),
+            dry_run=dry_run,
+            save=save,
+            as_table=as_table,
+            distribute=distribute,
+            where=where,
+            track_lineage=track_lineage,
+            skip_computed=skip_computed,
+            schema_filter=schema_filter,
+            schema_level=list(study_config.schema_keys),
+        )
+
+def _inputs_are_empty(database, inputs: Mapping[str, Any]) -> bool:
+    """Return True when every SciDB table input has no registered rows."""
+    if not inputs:
+        return False
+    checked = False
+    for input_source in inputs.values():
+        if not isinstance(input_source, type):
+            continue
+        checked = True
+        try:
+            rows = database.load_all_as_df(input_source, include_rid=True)
+        except Exception as exc:
+            if _looks_like_missing_table(exc):
+                return True
+            raise
+        if not rows.empty:
+            return False
+    return checked
+
+
+def _looks_like_missing_table(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}"
+    return "CatalogException" in text or "does not exist" in text or "not found" in text

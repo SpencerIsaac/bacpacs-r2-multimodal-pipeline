@@ -69,3 +69,12 @@ process_delsys_raw_file(...)
 process_xsens_raw_file(...)
 process_gaitrite_raw_file(...)
 ```
+
+## Derived downstream tables
+
+| Study | Trial | Unmatched cycles | Matched cycles | Visit summary | Issues |
+| --- | --- | --- | --- | --- | --- |
+| R1 | `R1TrialAnalysis` | `R1CycleUnmatched` | `R1CycleMatched` | `R1VisitSummary` | `R1AnalysisIssue` |
+| R2 | `TrialAnalysis` | `CycleUnmatched` | `CycleMatched` | `VisitSummary` | `AnalysisIssue` |
+
+Derived downstream table rows are built by `Modality_Pipelines/common/downstream_analysis.py` after first-pass Xsens, Delsys, and GAITRite processing.

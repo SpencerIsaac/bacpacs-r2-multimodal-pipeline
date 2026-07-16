@@ -22,7 +22,7 @@ from typing import Any
 import numpy as np
 from scipy.io import loadmat
 
-from Modality_Pipelines.Delsys_Pipeline.delsys_filtering import filter_delsys
+from Modality_Pipelines.Delsys_Pipeline.delsys_filtering import filter_delsys, normalize_delsys_trial
 
 DELSYS_CONFIG_PATH = Path(__file__).with_name("delsys_config.json")
 NON_EMG_CHANNEL_KEYWORDS = ("trig", "trigger", "sync", "stim", "event")
@@ -42,7 +42,7 @@ def process_loaded_delsys(
     config = dict(config or load_delsys_config())
     filter_config = config["FILTER"]
     sampling_frequency = config.get("EMG_SAMPLING_FREQUENCY", filter_config["SAMPLING_FREQUENCY"])
-    return filter_delsys(loaded_data, filter_config, sampling_frequency)
+    return filter_delsys(loaded_data, filter_config, sampling_frequency, config.get("PROCESSING", {}))
 
 
 def load_delsys_mat_file(mat_file: str | Path) -> dict[str, Any]:
@@ -70,9 +70,13 @@ def load_delsys_mat_file(mat_file: str | Path) -> dict[str, Any]:
 
     unit_by_channel = _channel_units(mat_data, len(titles))
     channels = {}
+    skipped_channel_spans = {}
     for title, start, end in zip(titles, starts, ends):
         if start < 1 or end < start or end > flat_data.size:
-            raise ValueError(f"Invalid one-based data span for channel {title!r}: {start}-{end}")
+            if _is_emg_channel(title, unit_by_channel.get(title, "")):
+                raise ValueError(f"Invalid one-based data span for EMG channel {title!r}: {start}-{end}")
+            skipped_channel_spans[title] = {"datastart": int(start), "dataend": int(end)}
+            continue
         channels[title] = np.asarray(flat_data[start - 1 : end], dtype=float)
 
     emg_channel_names = [
@@ -80,7 +84,9 @@ def load_delsys_mat_file(mat_file: str | Path) -> dict[str, Any]:
         for title in titles
         if _is_emg_channel(title, unit_by_channel.get(title, ""))
     ]
-    auxiliary_channel_names = [title for title in titles if title not in emg_channel_names]
+    auxiliary_channel_names = [
+        title for title in titles if title not in emg_channel_names and title in channels
+    ]
 
     return {
         "file_path": str(mat_path),
@@ -101,7 +107,9 @@ def load_delsys_mat_file(mat_file: str | Path) -> dict[str, Any]:
             "sample_count_by_channel": {
                 title: int(ends[index] - starts[index] + 1)
                 for index, title in enumerate(titles)
+                if title in channels
             },
+            "skipped_channel_spans": skipped_channel_spans,
         },
     }
 
@@ -112,16 +120,22 @@ def process_delsys_raw_file(raw_file_record: Mapping[str, Any] | str | Path) -> 
     file_path = _file_path_from_record(raw_file_record)
     loaded = load_delsys_mat_file(file_path)
     sampling_frequency = _emg_sampling_frequency(loaded["metadata"], config)
-    processed_emg = filter_delsys(loaded["emg_channels"], config["FILTER"], sampling_frequency)
+    processing_config = config.get("PROCESSING", {})
+    processed_emg = filter_delsys(loaded["emg_channels"], config["FILTER"], sampling_frequency, processing_config)
+    normalized_emg = normalize_delsys_trial(processed_emg) if processing_config.get("NORMALIZATION", {}).get("ENABLED", True) else {}
 
     return {
         "file_path": loaded["file_path"],
         "sampling_frequency": sampling_frequency,
         "processed_emg": processed_emg,
+        "processed_emg_units": "rms_envelope",
+        "normalized_emg": normalized_emg,
+        "normalized_emg_units": "fraction_of_trial_max",
         "auxiliary_channels": loaded["auxiliary_channels"],
         "metadata": {
             **loaded["metadata"],
             "filter": config["FILTER"],
+            "processing": processing_config,
             "pipeline_metadata": config.get("pipeline_metadata", {}),
         },
     }
@@ -204,3 +218,4 @@ def _as_float_list(value: Any) -> list[float]:
     if value is None:
         return []
     return [float(item) for item in np.asarray(value, dtype=float).ravel()]
+

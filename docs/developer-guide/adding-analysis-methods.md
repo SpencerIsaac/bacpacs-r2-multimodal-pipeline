@@ -1,6 +1,6 @@
 # Adding analysis methods
 
-Researchers may add downstream analysis methods after first-pass modality processing is complete. Examples include Delsys coactivation, Xsens gait-event detection, GAITRite variability metrics, or cross-modal symmetry measures.
+Researchers may add downstream analysis methods after first-pass modality processing is complete. The fixed multimodal table layer in `Modality_Pipelines/common/downstream_analysis.py` owns `TrialAnalysis`, `CycleUnmatched`, `VisitSummary`, `CycleMatched`, and `AnalysisIssue`. Registry-defined methods are for additional analyses beyond that core table layer. Examples include Delsys coactivation, Xsens gait-event detection, GAITRite variability metrics, or cross-modal symmetry measures.
 
 Analysis methods should be added through the pipeline registry rather than run as disconnected scripts. This allows the CLI and GUI to discover the method, run it in batch, write results to the correct study table, and preserve provenance through the database.
 
@@ -122,3 +122,9 @@ Example:
 ## Rule
 
 Analysis processors must read from processed tables only. If a method opens raw acquisition files directly, it belongs in first-pass modality processing, not downstream analysis processing.
+
+## Fixed multimodal table layer
+
+Do not register `TrialAnalysis`, `CycleUnmatched`, `VisitSummary`, `CycleMatched`, or `AnalysisIssue` in `analysis_registry.json`. Those tables are built by the guarded `bacpacs analyze build-*` commands and have dependency rules documented in the downstream analysis guide.
+
+Use the registry workflow on this page for optional future analyses that consume processed tables or derived downstream tables and produce a separate output table.

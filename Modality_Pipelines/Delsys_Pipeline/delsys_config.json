@@ -1,22 +1,30 @@
 {
   "pipeline_metadata": {
-    "version": "1.3.0",
-    "last_updated": "2026-07-02"
+    "version": "1.4.0",
+    "last_updated": "2026-07-15",
+    "description": "Delsys EMG processing: 4th-order 20-450 Hz Butterworth bandpass, full-wave rectification, 50 ms RMS moving window, and trial-maximum dynamic normalization."
   },
   "EMG_SAMPLING_FREQUENCY": 2000,
   "FILTER": {
     "BANDPASS_ORDER": 4,
     "BANDPASS_CUTOFF": [
-      4,
-      100
+      20,
+      450
     ],
-    "LOWPASS_ORDER": 2,
-    "LOWPASS_CUTOFF": 5,
     "SAMPLING_FREQUENCY": 2000,
     "NOTCH": {
       "ENABLED": false,
       "FREQUENCY": 60,
       "QUALITY_FACTOR": 30
+    }
+  },
+  "PROCESSING": {
+    "FULL_WAVE_RECTIFY": true,
+    "RMS_WINDOW_MS": 50,
+    "NORMALIZATION": {
+      "ENABLED": true,
+      "METHOD": "trial_max",
+      "DESCRIPTION": "Each channel is divided by its maximum RMS activation within the exported trial. Gait-cycle-specific normalization requires cycle boundaries and is not available in this first-pass Delsys stage."
     }
   }
 }

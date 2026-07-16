@@ -60,6 +60,7 @@ Modality_Pipelines/common/study_config.py
 Modality_Pipelines/common/table_registry.py
 Modality_Pipelines/common/lightweight_registry.py
 Modality_Pipelines/common/analysis_registry.json
+Modality_Pipelines/common/downstream_analysis.py
 ```
 
 `config.json` contains base vocabulary and R2 defaults. `study_config.py` resolves selected-study values for R1 and R2. Do not duplicate visit codes, modality codes, folder names, or file naming patterns inside modality-specific scripts.
@@ -67,7 +68,7 @@ Modality_Pipelines/common/analysis_registry.json
 ## Current flow
 
 ```text
-filesystem -> validation -> RawFile tables -> first-pass processors -> processed tables -> analysis registry -> analysis tables
+filesystem -> validation -> RawFile tables -> first-pass processors -> processed tables -> downstream analysis tables -> optional analysis registry
 ```
 
 Raw files enter the system only through validation, registration, and first-pass modality processing. Downstream analyses read processed tables only.
@@ -81,6 +82,7 @@ The CLI and GUI call the same backend API.
 .\bacpacs.cmd validate --study R2
 .\bacpacs.cmd register --study R2 --dry-run
 .\bacpacs.cmd process --study R2 --modality all
+.\bacpacs.cmd analyze build-all --study R2 --participant 001 --visit BL
 .\bacpacs.cmd analyses --study R2
 .\bacpacs.cmd gui
 ```

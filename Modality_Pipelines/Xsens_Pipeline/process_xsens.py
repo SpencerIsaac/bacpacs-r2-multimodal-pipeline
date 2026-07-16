@@ -230,10 +230,22 @@ def _file_path_from_record(raw_file_record: Mapping[str, Any] | str | Path) -> P
     if isinstance(raw_file_record, (str, Path)):
         return Path(raw_file_record)
     if "file_path" in raw_file_record:
-        return Path(str(raw_file_record["file_path"]))
+        return _path_from_field(raw_file_record["file_path"])
     if "path" in raw_file_record:
-        return Path(str(raw_file_record["path"]))
+        return _path_from_field(raw_file_record["path"])
     raise KeyError("Xsens raw_file_record must contain a file_path field.")
+
+
+def _path_from_field(value: Any) -> Path:
+    if hasattr(value, "iloc"):
+        if len(value) == 0:
+            raise ValueError("raw_file_record file_path field is empty.")
+        value = value.iloc[0]
+    elif isinstance(value, (list, tuple, np.ndarray)):
+        if len(value) == 0:
+            raise ValueError("raw_file_record file_path field is empty.")
+        value = value[0]
+    return Path(str(value))
 
 
 def _normalize_header(value: Any) -> str:

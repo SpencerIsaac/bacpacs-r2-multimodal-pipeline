@@ -24,7 +24,7 @@ From the shared repo, prefer the launcher:
 | `process` | Run first-pass modality processing. |
 | `status` | Show study paths and registered table stages. |
 | `analyses` | List registry-defined downstream analyses. |
-| `analyze` | Run a registry-defined downstream analysis. |
+| `analyze` | Run a fixed downstream analysis stage or a registry-defined downstream analysis. |
 
 ## Common filters
 
@@ -53,3 +53,23 @@ Not every filter is meaningful for every command or modality. Filters narrow the
 | `analyze` | yes | `--dry-run` | `--overwrite` | no |
 | `status` | study only | no | no | no |
 | `gui` | no | no | no | no |
+
+## Derived downstream stages
+
+The fixed multimodal downstream table layer is run through positional `analyze` stages:
+
+```powershell
+.\bacpacs.cmd analyze build-trial --study R1 --participant 001 --visit BL
+.\bacpacs.cmd analyze build-cycles --study R1 --participant 001 --visit BL
+.\bacpacs.cmd analyze finalize-visit --study R1 --participant 001 --visit BL
+.\bacpacs.cmd analyze normalize-cycles --study R1 --participant 001 --visit BL
+.\bacpacs.cmd analyze build-matched --study R1 --participant 001 --visit BL
+.\bacpacs.cmd analyze export --study R1 --participant 001 --visit BL
+.\bacpacs.cmd analyze build-all --study R1 --participant 001 --visit BL
+```
+
+Registry-defined ad hoc analyses still use `--analysis`:
+
+```powershell
+.\bacpacs.cmd analyze --study R2 --analysis coactivation
+```

@@ -20,6 +20,7 @@ REQUIRED_DOCS = [
     "user-guide/first-time-setup.md",
     "user-guide/running-the-pipeline.md",
     "user-guide/cli-reference.md",
+    "user-guide/downstream-analysis.md",
     "user-guide/gui-control-panel.md",
     "developer-guide/architecture.md",
     "developer-guide/adding-analysis-methods.md",

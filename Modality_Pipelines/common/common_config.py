@@ -212,12 +212,32 @@ def modality_folder(participant: int | str, visit: str, modality: str, study_con
 
 
 def configure_scistack_database(database_path: str | Path | None = None, study_config=None):
-    """Configure the SciStack/scidb DuckDB database for the R2 pipeline."""
-    from scidb import configure_database
+    """Configure or reuse the SciStack/scidb DuckDB database.
 
-    resolved_database_path = database_path or _study_value(study_config, "database_path", DATABASE_PATH)
-    schema_keys = _study_value(study_config, "schema_keys", SCHEMA_KEYS)
-    return configure_database(resolved_database_path, list(schema_keys))
+    DuckDB permits only one writable connection to a database file per process.
+    The Streamlit control panel may query SciDB before launching processing, so
+    reuse the existing SciStack DatabaseManager when it already points at the
+    requested study database and schema.
+    """
+    from scidb import configure_database, get_database
+
+    resolved_database_path = Path(database_path or _study_value(study_config, "database_path", DATABASE_PATH))
+    schema_keys = list(_study_value(study_config, "schema_keys", SCHEMA_KEYS))
+
+    try:
+        current_database = get_database()
+    except Exception:
+        current_database = None
+
+    if current_database is not None:
+        current_path = Path(getattr(current_database, "dataset_db_path", ""))
+        current_schema_keys = list(getattr(current_database, "dataset_schema_keys", []))
+        if current_path == resolved_database_path and current_schema_keys == schema_keys:
+            if getattr(current_database, "_closed", False):
+                current_database.reopen()
+            return current_database
+
+    return configure_database(resolved_database_path, schema_keys)
 
 
 

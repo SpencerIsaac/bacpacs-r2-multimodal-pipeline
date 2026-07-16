@@ -72,7 +72,7 @@ analyses/                    analyses/                    analyses/
 | Study separation | R1 and R2 table namespaces in the same database. |
 | Study selection | `--study R1` or `--study R2` in CLI; R1/R2 selector in GUI. |
 | Raw file entry | Only validation, registration, and first-pass processing touch raw files. |
-| Analysis entry | Analysis processors read processed tables only. |
+| Analysis entry | Fixed downstream stages read processed tables and write derived analysis tables; optional registry analyses read processed tables only. |
 | Extension path | Add modality code, output table, and registry entry instead of editing CLI internals. |
 
 ## Backend API shape
@@ -84,3 +84,17 @@ run_modality_processing(study="R2", modality="all", ...)
 list_available_analyses(study="R2")
 run_registered_analysis(study="R2", analysis="coactivation", ...)
 ```
+
+## Downstream analysis API shape
+
+```python
+build_trial_analysis(study="R2", ...)
+build_cycle_unmatched(study="R2", ...)
+finalize_visit_summary(study="R2", ...)
+normalize_cycles_to_visit(study="R2", ...)
+build_cycle_matched(study="R2", ...)
+export_analysis_tables(study="R2", ...)
+build_all(study="R2", ...)
+```
+
+The downstream layer uses exact table names from the R1/R2 SciDB table modules. It does not infer study prefixes.

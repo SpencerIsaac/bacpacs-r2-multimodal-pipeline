@@ -1,17 +1,13 @@
 """
-Delsys EMG filtering methods ported from MATLAB.
-Handles one muscle channel at a time, with optional notch filtering,
-rectification, and low-pass envelope filtering.
-Helper methods only; intended to be called by process_delsys.py.
+Delsys EMG filtering methods.
 
-@author shensley01
-@version 0.4.0
-@last_updated 2026-07-02
-@change_log
-    - 2026-07-02 v0.4.0: Added config-controlled optional notch filtering, defaulted off.
-    - 2026-07-02 v0.3.0: Replaced scaffold with direct Python port of filterEMGOneMuscle and filterDelsys MATLAB logic.
-    - 2026-07-02 v0.2.0: Ported MATLAB filterEMGOneMuscle and filterDelsys logic to Python.
-    - 2026-07-01 v0.1.0: Created initial Delsys filtering module scaffold.
+Current first-pass processing follows the configured Delsys method:
+1. subtract channel mean
+2. optional notch filter
+3. Butterworth bandpass
+4. full-wave rectification
+5. RMS moving-window smoothing
+6. optional dynamic normalization by trial maximum
 """
 
 from __future__ import annotations
@@ -43,45 +39,69 @@ def filter_emg_one_muscle(
     raw_emg_one_muscle: np.ndarray,
     filter_emg_config: Mapping[str, Any],
     emg_fs: float,
-    rectify: bool = True,
+    processing_config: Mapping[str, Any] | None = None,
 ) -> np.ndarray:
-    """Parse configuration and filter one muscle's raw EMG data."""
+    """Bandpass, rectify, and RMS-smooth one raw EMG channel."""
     raw_emg_one_muscle = np.asarray(raw_emg_one_muscle, dtype=float)
-    rectify = bool(rectify)
+    processing_config = dict(processing_config or {})
 
     if np.all(np.isnan(raw_emg_one_muscle)):
         return np.full(raw_emg_one_muscle.shape, np.nan, dtype=float)
 
-    fpass = filter_emg_config["BANDPASS_CUTOFF"]
-    order = filter_emg_config["BANDPASS_ORDER"]
-    fcut = filter_emg_config["LOWPASS_CUTOFF"]
-    lowpass_order = filter_emg_config.get("LOWPASS_ORDER", 2)
-
-    b_band, a_band = butter(order, np.asarray(fpass, dtype=float) / (emg_fs / 2), btype="bandpass")
-    b_low, a_low = butter(lowpass_order, fcut / (emg_fs / 2), btype="low")
+    fpass = np.asarray(filter_emg_config["BANDPASS_CUTOFF"], dtype=float)
+    order = int(filter_emg_config["BANDPASS_ORDER"])
+    b_band, a_band = butter(order, fpass, btype="bandpass", fs=emg_fs)
 
     emg_subtracted_mean = raw_emg_one_muscle - np.nanmean(raw_emg_one_muscle)
     emg_notched = _apply_optional_notch(emg_subtracted_mean, filter_emg_config, emg_fs)
     emg_bandpass = filtfilt(b_band, a_band, emg_notched)
 
-    if rectify:
-        emg_rectified = np.abs(emg_bandpass)
-        filtered_emg = filtfilt(b_low, a_low, emg_rectified)
+    if processing_config.get("FULL_WAVE_RECTIFY", True):
+        emg_processed = np.abs(emg_bandpass)
     else:
-        filtered_emg = emg_bandpass
+        emg_processed = emg_bandpass
 
-    return filtered_emg
+    window_ms = float(processing_config.get("RMS_WINDOW_MS", 50))
+    return rms_moving_window(emg_processed, emg_fs, window_ms)
+
+
+def rms_moving_window(signal: np.ndarray, fs: float, window_ms: float) -> np.ndarray:
+    """Return RMS-smoothed signal using a centered moving window."""
+    signal = np.asarray(signal, dtype=float)
+    window_samples = max(int(round(float(fs) * float(window_ms) / 1000.0)), 1)
+    kernel = np.ones(window_samples, dtype=float) / window_samples
+    mean_square = np.convolve(np.square(signal), kernel, mode="same")
+    return np.sqrt(mean_square)
+
+
+def normalize_to_trial_max(processed_channel: np.ndarray) -> np.ndarray:
+    """Normalize a processed channel by its maximum finite value in the trial."""
+    processed_channel = np.asarray(processed_channel, dtype=float)
+    finite = processed_channel[np.isfinite(processed_channel)]
+    if finite.size == 0:
+        return np.full(processed_channel.shape, np.nan, dtype=float)
+    max_value = float(np.nanmax(np.abs(finite)))
+    if max_value == 0:
+        return np.zeros(processed_channel.shape, dtype=float)
+    return processed_channel / max_value
 
 
 def filter_delsys(
     loaded_data: Mapping[str, np.ndarray],
     config: Mapping[str, Any],
     fs: float,
+    processing_config: Mapping[str, Any] | None = None,
 ) -> dict[str, np.ndarray]:
-    """Filter each muscle channel in a loaded Delsys data record."""
-    filtered_data = {}
+    """Process each muscle channel in a loaded Delsys data record."""
+    return {
+        muscle_name: filter_emg_one_muscle(muscle_data, config, fs, processing_config)
+        for muscle_name, muscle_data in loaded_data.items()
+    }
 
-    for muscle_name, muscle_data in loaded_data.items():
-        filtered_data[muscle_name] = filter_emg_one_muscle(muscle_data, config, fs)
 
-    return filtered_data
+def normalize_delsys_trial(processed_data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Create a trial-maximum-normalized copy of processed Delsys channels."""
+    return {
+        muscle_name: normalize_to_trial_max(muscle_data)
+        for muscle_name, muscle_data in processed_data.items()
+    }

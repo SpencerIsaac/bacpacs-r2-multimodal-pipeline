@@ -72,3 +72,32 @@ class R1AfoProcessed(BaseVariable):
     """Processed R1 AFO output aligned to the project trial schema."""
 
     schema_version = 1
+
+class R1TrialAnalysis(BaseVariable):
+    """Derived R1 trial-level multimodal analysis row."""
+
+    schema_version = 1
+
+
+class R1CycleUnmatched(BaseVariable):
+    """Derived R1 side-specific gait-cycle analysis row before L/R matching."""
+
+    schema_version = 1
+
+
+class R1CycleMatched(BaseVariable):
+    """Derived R1 matched left/right gait-cycle pair for symmetry analysis."""
+
+    schema_version = 1
+
+
+class R1VisitSummary(BaseVariable):
+    """Derived R1 finalized visit-level normalization summary."""
+
+    schema_version = 1
+
+
+class R1AnalysisIssue(BaseVariable):
+    """Structured R1 downstream analysis issue log."""
+
+    schema_version = 1

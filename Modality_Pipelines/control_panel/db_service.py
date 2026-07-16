@@ -12,10 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import pandas as pd
 
-from Modality_Pipelines.common.common_config import PIPELINE_ROOT
+from Modality_Pipelines.common.common_config import PIPELINE_ROOT, configure_scistack_database
 from Modality_Pipelines.common.lightweight_registry import (
     PROCESSED_TABLE_NAMES,
     RAW_FILE_TABLE_NAMES,
@@ -58,6 +57,28 @@ def get_ledger_stage_map(config_path: str | Path | None = None, study: str = "R2
     return [_normalize_modality_config(modality, study_config) for modality in modalities]
 
 
+
+def _query_scistack_database(
+    query: str,
+    params=None,
+    *,
+    database_path: str | Path | None = None,
+    study_config: StudyConfig,
+) -> pd.DataFrame:
+    """Run a control-panel read query through the configured SciStack DB.
+
+    The UI should not open independent DuckDB connections. Configuring through
+    SciStack keeps connection ownership consistent with registration and
+    processing code paths.
+    """
+    database = configure_scistack_database(database_path, study_config=study_config)
+    return database._duck.query(query, params)
+
+
+def _is_missing_metadata_table_error(exc: Exception) -> bool:
+    return exc.__class__.__name__ == "CatalogException"
+
+
 def get_record_counts(
     database_path: str | Path | None = None,
     stage_map: list[dict[str, Any]] | None = None,
@@ -92,10 +113,16 @@ def get_record_counts(
     """
 
     try:
-        with duckdb.connect(str(path), read_only=True) as con:
-            return con.execute(query, wanted_types).fetchdf()
-    except duckdb.CatalogException:
-        return _empty_counts()
+        return _query_scistack_database(
+            query,
+            wanted_types,
+            database_path=path,
+            study_config=study_config,
+        )
+    except Exception as exc:
+        if _is_missing_metadata_table_error(exc):
+            return _empty_counts()
+        raise
 
 
 def build_processing_ledger(
@@ -250,10 +277,16 @@ def get_lineage_records(database_path: str | Path | None = None, limit: int = 20
         LIMIT ?
     """
     try:
-        with duckdb.connect(str(path), read_only=True) as con:
-            return con.execute(query, [limit]).fetchdf()
-    except duckdb.CatalogException:
-        return pd.DataFrame()
+        return _query_scistack_database(
+            query,
+            [limit],
+            database_path=path,
+            study_config=study_config,
+        )
+    except Exception as exc:
+        if _is_missing_metadata_table_error(exc):
+            return pd.DataFrame()
+        raise
 
 
 def _normalize_modality_config(modality: dict[str, Any], study_config: StudyConfig) -> dict[str, Any]:

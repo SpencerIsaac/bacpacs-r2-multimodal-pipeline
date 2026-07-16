@@ -85,6 +85,14 @@ def _condition_by_file_code(study_config: StudyConfig) -> dict[str, str]:
     return {value["file_code"]: value["file_code"] for value in study_config.conditions.values()}
 
 
+def _resolve_manifest_modality_key(modality: str | None, study_config: StudyConfig) -> str | None:
+    """Resolve a modality file code to its modality key."""
+    if modality is None:
+        return None
+    modality_by_file_code = _modality_by_file_code(study_config)
+    return modality_by_file_code.get(str(modality))
+
+
 def _as_filter_values(value):
     if isinstance(value, str):
         return [value]
@@ -99,6 +107,46 @@ def _modality_filter_values(modality, study_config: StudyConfig):
         study_config.modalities.get(str(value), {}).get("file_code", value)
         for value in _as_filter_values(modality)
     ]
+
+
+def _modality_filter_keys(modality, study_config: StudyConfig) -> list[str]:
+    keys = []
+    for value in _as_filter_values(modality):
+        text_value = str(value)
+        if text_value in study_config.modalities:
+            keys.append(text_value)
+            continue
+        match = next(
+            (key for key, config in study_config.modalities.items() if config.get("file_code") == text_value),
+            None,
+        )
+        keys.append(match or text_value)
+    return keys
+
+
+def _participant_dirs(root: Path, participant_number, study_config: StudyConfig):
+    if participant_number is None:
+        yield from root.glob(study_config.participant_glob)
+        return
+    for value in _as_filter_values(participant_number):
+        yield root / format_participant(str(value), study_config=study_config)
+
+
+def _visit_configs(visit, study_config: StudyConfig):
+    if visit is None:
+        yield from study_config.visits.values()
+        return
+    for value in _as_filter_values(visit):
+        text_value = str(value)
+        if text_value in study_config.visits:
+            yield study_config.visits[text_value]
+            continue
+        match = next(
+            (config for config in study_config.visits.values() if config.get("file_code") == text_value),
+            None,
+        )
+        if match is not None:
+            yield match
 
 
 def _apply_manifest_filters(
@@ -215,16 +263,18 @@ def register_raw_files(
 ) -> dict[str, int]:
     """Register raw-file manifest records in study-specific RawFile tables."""
     study_config = _resolve_study(study)
-    configure_scistack_database(database_path, study_config=study_config)
+    database = configure_scistack_database(database_path, study_config=study_config)
 
     selected_modalities = list(modality_keys) if modality_keys is not None else None
     if modality is not None:
-        selected_modalities = [modality] if isinstance(modality, str) else list(modality)
+        selected_modalities = _modality_filter_keys(modality, study_config)
 
     df = manifest_df if manifest_df is not None else build_raw_file_manifest(
         selected_modalities,
         subject_data_root=root or study_config.subject_data_root,
         study=study_config,
+        participant_number=participant_number,
+        visit=visit,
     )
     df = _apply_manifest_filters(
         df,
@@ -238,31 +288,89 @@ def register_raw_files(
         study_config=study_config,
     )
 
-    counts = {"registered": 0, "skipped": 0}
-    modality_by_file_code = _modality_by_file_code(study_config)
-
+    counts = {"registered": 0, "skipped": 0, "skipped_existing": 0, "would_register": 0}
+    existing_by_table: dict[type, set[tuple]] = {}
     for _, row in df.iterrows():
         if only_valid and row["status"] != "valid":
             counts["skipped"] += 1
             continue
 
-        modality_key = modality_by_file_code.get(str(row["modality"]))
+        modality_key = _resolve_manifest_modality_key(row["modality"], study_config)
         if modality_key is None:
             counts["skipped"] += 1
             continue
 
         table = get_raw_file_table(study_config.study, modality_key)
         metadata = {key: (None if pd.isna(row[key]) else row[key]) for key in study_config.schema_keys}
+        identity = _raw_file_identity(metadata, study_config)
+        if not update_existing:
+            existing = existing_by_table.setdefault(
+                table,
+                _existing_raw_file_identities(database, table, study_config),
+            )
+            if identity in existing:
+                counts["skipped_existing"] += 1
+                continue
+
         payload = {
             "file_path": row["file_path"],
             "file_name": row["file_name"],
             "extension": row["extension"],
         }
-        if not dry_run:
+        if dry_run:
+            counts["would_register"] += 1
+            continue
+
+        try:
             table.save(payload, **metadata)
+        except Exception as exc:
+            if _looks_like_duplicate_record(exc):
+                existing_by_table.setdefault(table, set()).add(identity)
+                counts["skipped_existing"] += 1
+                continue
+            raise
+        existing_by_table.setdefault(table, set()).add(identity)
         counts["registered"] += 1
 
     return counts
+
+
+def _existing_raw_file_identities(database, table: type, study_config: StudyConfig) -> set[tuple]:
+    try:
+        existing = database.load_all_as_df(table, include_rid=True)
+    except Exception as exc:
+        if _looks_like_missing_table(exc):
+            return set()
+        raise
+    if existing.empty:
+        return set()
+    return {
+        _raw_file_identity(row, study_config)
+        for _, row in existing.iterrows()
+    }
+
+
+def _raw_file_identity(row, study_config: StudyConfig) -> tuple:
+    return tuple(_identity_value(row.get(key)) for key in study_config.schema_keys)
+
+
+def _identity_value(value):
+    if value is None or pd.isna(value):
+        return None
+    text = str(value)
+    if text in {"", "None", "nan", "NaN", "<NA>", "NaT"}:
+        return None
+    return text
+
+
+
+def _looks_like_duplicate_record(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}"
+    return "Duplicate key" in text and "record_id" in text
+
+def _looks_like_missing_table(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}"
+    return "CatalogException" in text or "does not exist" in text or "not found" in text
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +383,8 @@ def iter_modality_files(
     subject_data_root: str | Path | None = None,
     *,
     study: str | StudyConfig = "R2",
+    participant_number=None,
+    visit=None,
 ) -> Iterable[Path]:
     """Yield primary raw files from expected participant/visit/modality folders."""
     study_config = _resolve_study(study)
@@ -286,10 +396,10 @@ def iter_modality_files(
         for extension in modality_config.get("primary_extensions", [])
     }
 
-    for participant_dir in root.glob(study_config.participant_glob):
+    for participant_dir in _participant_dirs(root, participant_number, study_config):
         if not participant_dir.is_dir():
             continue
-        for visit_config in study_config.visits.values():
+        for visit_config in _visit_configs(visit, study_config):
             folder = participant_dir / visit_config["folder"] / modality_folder_name
             if folder.exists():
                 for path in folder.iterdir():
@@ -342,7 +452,6 @@ def validate_raw_file(
 
     visit_by_file_code = _visit_by_file_code(study_config)
     modality_by_file_code = _modality_by_file_code(study_config)
-
     if len(relative_parts) < 4:
         issues.append("location: expected participant/visit/modality/file structure")
     else:
@@ -399,6 +508,8 @@ def build_raw_file_manifest(
     subject_data_root: str | Path | None = None,
     *,
     study: str | StudyConfig = "R2",
+    participant_number=None,
+    visit=None,
 ) -> pd.DataFrame:
     """Build a dry-run validation manifest for discovered primary raw files."""
     study_config = _resolve_study(study)
@@ -411,6 +522,8 @@ def build_raw_file_manifest(
             modality_key,
             subject_data_root,
             study=study_config,
+            participant_number=participant_number,
+            visit=visit,
         ):
             record = validate_raw_file(file_path, subject_data_root, study=study_config)
             duplicate_key = (
@@ -447,12 +560,14 @@ def validate_study_files(
     study_config = _resolve_study(study)
     modality_keys = None
     if modality is not None:
-        modality_keys = [modality] if isinstance(modality, str) else list(modality)
+        modality_keys = _modality_filter_keys(modality, study_config)
 
     df = build_raw_file_manifest(
         modality_keys,
         subject_data_root=root or study_config.subject_data_root,
         study=study_config,
+        participant_number=participant_number,
+        visit=visit,
     )
     return _apply_manifest_filters(
         df,

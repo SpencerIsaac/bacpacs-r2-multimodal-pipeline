@@ -59,14 +59,24 @@ To run one modality:
 .\bacpacs.cmd process --study R2 --modality gaitrite
 ```
 
-## Step 5. Run downstream analyses
+## Step 5. Build downstream analysis tables
+
+After first-pass Xsens, Delsys, and GAITRite processing succeeds, build the fixed multimodal downstream tables:
+
+```powershell
+.\bacpacs.cmd analyze build-all --study R2 --participant 001 --visit BL
+```
+
+The guarded `build-all` path runs `build-trial`, `build-cycles`, `finalize-visit`, `normalize-cycles`, `build-matched`, and `export` in dependency order. Individual stages can be run when needed, but they hard-fail if required upstream tables are missing.
+
+Registry-defined ad hoc analyses are still listed and run separately:
 
 ```powershell
 .\bacpacs.cmd analyses --study R2
 .\bacpacs.cmd analyze --study R2 --analysis coactivation
 ```
 
-Downstream analyses are discovered from `Modality_Pipelines/common/analysis_registry.json`.
+Registry analyses are discovered from `Modality_Pipelines/common/analysis_registry.json`. The fixed downstream table layer lives in `Modality_Pipelines/common/downstream_analysis.py`.
 
 ## Step 6. Check status
 
