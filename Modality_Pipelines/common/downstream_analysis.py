@@ -734,10 +734,19 @@ def _merge_side_signals(current: Mapping[str, Any], nxt: Mapping[str, Any], fiel
     for source, side in ((current, current_side), (nxt, next_side)):
         signals = _payload_value(source, field, {}) or {}
         for name, values in signals.items():
-            text = str(name).upper()
-            if text.startswith(side):
+            signal_side = _signal_side(name)
+            if signal_side == side or (signal_side is None and source is current):
                 merged[name] = values
     return merged
+
+
+def _signal_side(name: Any) -> str | None:
+    text = str(name).upper()
+    if text.startswith("L") or "_LEFT" in text or "LEFT" in text:
+        return "L"
+    if text.startswith("R") or "_RIGHT" in text or "RIGHT" in text:
+        return "R"
+    return None
 
 
 def _analysis_export_frame(df: pd.DataFrame, table_key: str | None = None) -> pd.DataFrame:

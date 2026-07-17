@@ -40,17 +40,13 @@ CYCLE_COLUMNS = ["source_record_id", "matched_cycle_index"]
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    source = args.input or newest_export(Path("analysis_scripts") / "exports", "*_bacpacs_cycle_matched.csv")
-    if source is None or not source.exists():
-        raise SystemExit("Could not find a matched-cycle export. Pass --input path/to/*_bacpacs_cycle_matched.csv")
-
-    df = pd.read_csv(source)
+    df, source_label = load_plot_frame(args)
     df = filter_frame(df, args)
     validate_frame(df)
     if df.empty:
         raise SystemExit("No rows matched the requested filters.")
 
-    output_dir = args.output_dir or source.parent.parent / "plots" / source.stem
+    output_dir = args.output_dir or Path("analysis_scripts") / "plots" / safe_token(source_label)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     sns.set_theme(style="whitegrid", context="talk")
@@ -73,8 +69,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate seaborn plots from BACPACS CycleMatched exports.")
-    parser.add_argument("--input", type=Path, help="Path to YYYYMMDD_*_bacpacs_cycle_matched.csv")
+    parser = argparse.ArgumentParser(description="Generate seaborn plots from BACPACS CycleMatched records.")
+    parser.add_argument("--study", default="R1", choices=["R1", "R2"], help="Study database to read when --input is not provided")
+    parser.add_argument("--database-path", type=Path, help="Optional SciDB/DuckDB database path override")
+    parser.add_argument("--input", type=Path, help="Explicit CSV fallback path; DB is used when omitted")
     parser.add_argument("--output-dir", type=Path, help="Directory for PNG/SVG plot outputs")
     parser.add_argument("--signal-group", action="append", choices=DEFAULT_SIGNAL_GROUPS + ("delsys_time_normalized",), help="Signal group to plot; repeat for multiple groups")
     parser.add_argument("--participant", help="Filter participant_number. 1 and 001 are treated as equivalent.")
@@ -92,10 +90,27 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def newest_export(root: Path, pattern: str) -> Path | None:
-    files = sorted(root.glob(pattern), key=lambda path: path.stat().st_mtime, reverse=True)
-    return files[0] if files else None
+def load_plot_frame(args: argparse.Namespace) -> tuple[pd.DataFrame, str]:
+    if args.input is not None:
+        if not args.input.exists():
+            raise SystemExit(f"CSV input does not exist: {args.input}")
+        return pd.read_csv(args.input), args.input.stem
 
+    from Modality_Pipelines.common import downstream_analysis as da
+
+    filters = {
+        "database_path": str(args.database_path) if args.database_path else None,
+        "participant_number": args.participant,
+        "visit": args.visit,
+        "test": args.test,
+        "condition": args.condition,
+        "speed": args.speed,
+    }
+    ctx = da._context(args.study, {key: value for key, value in filters.items() if value not in (None, "")})
+    records = da._load_table(ctx, "cycle_matched")
+    if records.empty:
+        raise SystemExit(f"No CycleMatched records found in SciDB for study={args.study} and selected filters.")
+    return da._analysis_export_frame(records, table_key="cycle_matched"), f"{args.study.lower()}_cycle_matched_db"
 
 def filter_frame(df: pd.DataFrame, args: argparse.Namespace) -> pd.DataFrame:
     out = df.copy()

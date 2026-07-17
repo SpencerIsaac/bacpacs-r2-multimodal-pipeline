@@ -222,6 +222,38 @@ def test_cycle_matched_export_is_long_form_for_plotting():
 
 
 
+def test_merge_side_signals_accepts_xsens_left_right_names_and_midline_signals():
+    current = {
+        "xsens_time_normalized": {
+            "orientation_RightFoot_q0": [1.0],
+            "orientation_LeftFoot_q0": [2.0],
+            "orientation_Pelvis_q0": [3.0],
+        }
+    }
+    nxt = {
+        "xsens_time_normalized": {
+            "orientation_RightFoot_q0": [4.0],
+            "orientation_LeftFoot_q0": [5.0],
+            "orientation_Pelvis_q0": [6.0],
+        }
+    }
+
+    merged = da._merge_side_signals(current, nxt, "xsens_time_normalized", current_side="R", next_side="L")
+
+    assert merged["orientation_RightFoot_q0"] == [1.0]
+    assert merged["orientation_LeftFoot_q0"] == [5.0]
+    assert merged["orientation_Pelvis_q0"] == [3.0]
+
+
+def test_merge_side_signals_keeps_emg_letter_prefix_behavior():
+    current = {"delsys_time_normalized": {"RTA": [1.0], "LTA": [2.0]}}
+    nxt = {"delsys_time_normalized": {"RTA": [3.0], "LTA": [4.0]}}
+
+    merged = da._merge_side_signals(current, nxt, "delsys_time_normalized", current_side="R", next_side="L")
+
+    assert merged == {"RTA": [1.0], "LTA": [4.0]}
+
+
 def test_visit_export_omits_nested_max_emg_blob_and_keeps_wide_columns():
     df = __import__("pandas").DataFrame([
         {
