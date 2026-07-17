@@ -87,6 +87,7 @@ def _redirect_scifor_diag_log():
     """
     log_dir = Path(__file__).resolve().parents[2] / ".scistack_logs"
     log_dir.mkdir(exist_ok=True)
+    _ensure_legacy_tmp_dir()
     redirected_path = log_dir / "scihist_diag.log"
     original_open = builtins.open
 
@@ -108,6 +109,16 @@ def _redirect_scifor_diag_log():
         yield
     finally:
         builtins.open = original_open
+
+
+def _ensure_legacy_tmp_dir() -> None:
+    """Create the Unix-style /tmp directory expected by some SciStack builds."""
+    try:
+        Path("/tmp").mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # The open() redirect still protects in-process writes when the drive
+        # root is not writable, which can happen on locked-down Windows hosts.
+        pass
 
 
 def run_scistack_stage(
