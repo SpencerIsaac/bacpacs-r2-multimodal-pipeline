@@ -83,7 +83,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--condition", help="Filter condition, e.g. AFO or noAFO")
     parser.add_argument("--speed", help="Filter speed, e.g. FV or SSV")
     parser.add_argument("--signals", nargs="+", help="Optional signal_name values to plot, e.g. LTA RTA")
-    parser.add_argument("--col-wrap", type=int, default=4, help="Facet columns before wrapping")
+    parser.add_argument("--col-wrap", type=int, default=2, help="Facet columns before wrapping")
+    parser.add_argument("--height", type=float, default=4.2, help="Height in inches for each facet panel")
+    parser.add_argument("--aspect", type=float, default=1.35, help="Width/height aspect ratio for each facet panel")
     parser.add_argument("--formats", nargs="+", default=["png", "svg"], choices=["png", "svg", "pdf"], help="Figure formats to save")
     parser.add_argument("--no-overlay", action="store_true", help="Skip individual-cycle overlay plots")
     parser.add_argument("--no-mean", action="store_true", help="Skip mean-by-condition plots")
@@ -132,7 +134,8 @@ def write_mean_by_condition_plots(df: pd.DataFrame, signal_group: str, output_di
         if subset.empty:
             continue
         title_values = dict(zip(MEAN_GROUP_COLUMNS, key))
-        title = title_text(title_values, signal_group, "condition mean")
+        title = plot_title(signal_group, "condition mean")
+        subtitle = metadata_text(title_values)
         grid = sns.relplot(
             data=subset,
             x="percent_gait_cycle",
@@ -145,10 +148,10 @@ def write_mean_by_condition_plots(df: pd.DataFrame, signal_group: str, output_di
             errorbar=("ci", 95),
             facet_kws={"sharey": False, "sharex": True},
             linewidth=2.2,
-            height=3.0,
-            aspect=1.3,
+            height=args.height,
+            aspect=args.aspect,
         )
-        finish_grid(grid, title, y_label_for(signal_group))
+        finish_grid(grid, title, subtitle, y_label_for(signal_group))
         stem = "mean_by_condition_" + safe_join(title_values.values()) + "_" + safe_token(signal_group)
         written.extend(save_grid(grid, output_dir / "mean_by_condition", stem, args.formats))
     return written
@@ -168,7 +171,8 @@ def write_overlay_plots(df: pd.DataFrame, signal_group: str, output_dir: Path, a
         if subset.empty:
             continue
         title_values = dict(zip(KEY_COLUMNS, key))
-        title = title_text(title_values, signal_group, "individual cycles")
+        title = plot_title(signal_group, "individual cycles")
+        subtitle = metadata_text(title_values)
         grid = sns.relplot(
             data=subset,
             x="percent_gait_cycle",
@@ -182,24 +186,34 @@ def write_overlay_plots(df: pd.DataFrame, signal_group: str, output_dir: Path, a
             facet_kws={"sharey": False, "sharex": True},
             alpha=0.22,
             linewidth=0.9,
-            height=3.0,
-            aspect=1.3,
+            height=args.height,
+            aspect=args.aspect,
             legend=False,
         )
-        finish_grid(grid, title, y_label_for(signal_group))
+        finish_grid(grid, title, subtitle, y_label_for(signal_group))
         stem = "overlay_" + safe_join(title_values.values()) + "_" + safe_token(signal_group)
         written.extend(save_grid(grid, output_dir / "overlay", stem, args.formats))
     return written
 
 
-def finish_grid(grid, title: str, ylabel: str) -> None:
+def finish_grid(grid, title: str, subtitle: str, ylabel: str) -> None:
     grid.set_axis_labels("Gait cycle (%)", ylabel)
-    grid.set_titles("{col_name}")
-    grid.figure.subplots_adjust(top=0.88)
-    grid.figure.suptitle(title)
+    grid.set_titles("{col_name}", size=14, weight="bold")
+    grid.figure.subplots_adjust(top=0.80, hspace=0.36, wspace=0.24)
+    grid.figure.suptitle(title, fontsize=18, fontweight="bold", y=0.985)
+    grid.figure.text(0.5, 0.925, subtitle, ha="center", va="top", fontsize=11, color="0.25")
+    if grid.legend is not None:
+        grid.legend.set_title("condition")
+        try:
+            grid.legend.set_bbox_to_anchor((0.98, 0.88))
+        except AttributeError:
+            pass
     for ax in grid.axes.flat:
         ax.set_xlim(0, 100)
         ax.axhline(0, color="0.4", linewidth=0.8, alpha=0.5)
+        ax.tick_params(axis="both", labelsize=10)
+        ax.xaxis.label.set_size(11)
+        ax.yaxis.label.set_size(11)
 
 
 def save_grid(grid, folder: Path, stem: str, formats: Iterable[str]) -> list[Path]:
@@ -213,9 +227,28 @@ def save_grid(grid, folder: Path, stem: str, formats: Iterable[str]) -> list[Pat
     return written
 
 
-def title_text(values: dict[str, object], signal_group: str, suffix: str) -> str:
-    prefix = " | ".join(f"{key}={value}" for key, value in values.items())
-    return f"{prefix} | {signal_group} | {suffix}"
+def plot_title(signal_group: str, suffix: str) -> str:
+    return f"{display_signal_group(signal_group)} - {suffix}"
+
+
+def metadata_text(values: dict[str, object]) -> str:
+    labels = {
+        "participant_number": "participant",
+        "visit": "visit",
+        "test": "test",
+        "condition": "condition",
+        "speed": "speed",
+    }
+    return " | ".join(f"{labels.get(key, key)}={value}" for key, value in values.items())
+
+
+def display_signal_group(signal_group: str) -> str:
+    labels = {
+        "delsys_normalized_time_normalized": "Delsys normalized EMG",
+        "delsys_time_normalized": "Delsys EMG envelope",
+        "xsens_time_normalized": "Xsens joint angles",
+    }
+    return labels.get(signal_group, signal_group)
 
 
 def y_label_for(signal_group: str) -> str:
