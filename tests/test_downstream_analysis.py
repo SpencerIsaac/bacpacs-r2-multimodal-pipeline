@@ -5,6 +5,16 @@ from Modality_Pipelines.common import downstream_analysis as da
 from Modality_Pipelines.common.table_registry import get_table_class
 
 
+def _assert_export_has_no_braces_or_brackets(df):
+    text = df.fillna("").astype(str)
+    bad_columns = [
+        column
+        for column in text.columns
+        if text[column].str.contains(r"[{}\[\]]", regex=True, na=False).any()
+    ]
+    assert bad_columns == []
+
+
 def test_analysis_table_names_are_exact_per_study():
     assert get_table_class("R1", "R1TrialAnalysis").__name__ == "R1TrialAnalysis"
     assert get_table_class("R2", "TrialAnalysis").__name__ == "TrialAnalysis"
@@ -120,8 +130,13 @@ def test_trial_export_is_manifest_not_full_signal_payload():
     assert "delsys" not in exported.columns
     assert "gaitrite_loaded" not in exported.columns
     assert "gaitrite_cycles" not in exported.columns
+    assert "gaitrite_cycle_source_record_ids" not in exported.columns
+    assert exported.loc[0, "gaitrite_cycle_source_record_id_count"] == 2
+    assert exported.loc[0, "gaitrite_cycle_source_record_id_1"] == "c1"
+    assert exported.loc[0, "gaitrite_cycle_source_record_id_2"] == "c2"
     assert exported.loc[0, "gaitrite_cycle_count"] == 2
     assert exported.loc[0, "xsens_source_record_id"] == "x1"
+    _assert_export_has_no_braces_or_brackets(exported)
 
 
 
@@ -162,6 +177,7 @@ def test_cycle_unmatched_export_is_long_form_for_plotting():
     assert exported.loc[0, "percent_gait_cycle"] == 0.0
     assert exported.loc[2, "percent_gait_cycle"] == 100.0
     assert exported.loc[0, "gaitrite_Stride_time"] == 1.2
+    _assert_export_has_no_braces_or_brackets(exported)
 
 
 def test_cycle_matched_export_is_long_form_for_plotting():
@@ -202,3 +218,92 @@ def test_cycle_matched_export_is_long_form_for_plotting():
     assert exported.loc[0, "gaitrite_current_Stride_time"] == 1.1
     assert exported.loc[0, "signal_group"] == "delsys_time_normalized"
     assert set(exported["signal_name"]) == {"LTA", "RTA", "LKnee", "RKnee"}
+    _assert_export_has_no_braces_or_brackets(exported)
+
+
+
+def test_visit_export_omits_nested_max_emg_blob_and_keeps_wide_columns():
+    df = __import__("pandas").DataFrame([
+        {
+            "participant_number": "001",
+            "visit": "BL",
+            "__record_id": "visit-record",
+            "data": {
+                "normalization_scope": "participant_visit",
+                "max_emg": {"LTA": 1.5, "RTA": 2.5},
+                "max_emg_LTA": 1.5,
+                "max_emg_RTA": 2.5,
+                "source_cycle_count": 12,
+                "source_trial_count": 3,
+                "finalized_at": "2026-07-16T12:00:00",
+            },
+        }
+    ])
+
+    exported = da._analysis_export_frame(df, table_key="visit")
+
+    assert "max_emg" not in exported.columns
+    assert exported.loc[0, "max_emg_LTA"] == 1.5
+    assert exported.loc[0, "max_emg_RTA"] == 2.5
+    _assert_export_has_no_braces_or_brackets(exported)
+
+
+def test_issue_export_expands_related_record_ids_instead_of_json_list():
+    df = __import__("pandas").DataFrame([
+        {
+            "participant_number": "001",
+            "visit": "BL",
+            "test": "10MWT",
+            "condition": "noAFO",
+            "speed": "FV",
+            "trial": "1",
+            "cycle": "3",
+            "__record_id": "issue-record",
+            "data": {
+                "cycle_index": 3,
+                "stage": "cycle_matching",
+                "issue_type": "non_alternating_cycles",
+                "severity": "warning",
+                "modality": None,
+                "source_table": "CycleUnmatched",
+                "source_record_id": "left-id",
+                "related_record_ids": ["right-id", "next-id"],
+                "message": "Adjacent cycles do not alternate L/R.",
+                "created_at": "2026-07-16T12:00:00",
+            },
+        }
+    ])
+
+    exported = da._analysis_export_frame(df, table_key="issue")
+
+    assert "related_record_ids" not in exported.columns
+    assert exported.loc[0, "related_record_id_count"] == 2
+    assert exported.loc[0, "related_record_id_1"] == "right-id"
+    assert exported.loc[0, "related_record_id_2"] == "next-id"
+    _assert_export_has_no_braces_or_brackets(exported)
+
+
+def test_generic_export_recursively_flattens_nested_keys_without_json_blobs():
+    exported = da._analysis_export_frame(
+        __import__("pandas").DataFrame([
+            {
+                "participant_number": "001",
+                "visit": "BL",
+                "data": {
+                    "outer": {"inner": {"leaf": 4}},
+                    "items": [{"name": "first", "value": 1}, {"name": "second", "value": 2}],
+                    "empty_list": [],
+                    "empty_dict": {},
+                },
+            }
+        ]),
+        table_key="unknown",
+    )
+
+    assert exported.loc[0, "outer_inner_leaf"] == 4
+    assert exported.loc[0, "items_count"] == 2
+    assert exported.loc[0, "items_1_name"] == "first"
+    assert exported.loc[0, "items_2_value"] == 2
+    assert exported.loc[0, "empty_list_count"] == 0
+    assert exported.loc[0, "empty_dict_count"] == 0
+    _assert_export_has_no_braces_or_brackets(exported)

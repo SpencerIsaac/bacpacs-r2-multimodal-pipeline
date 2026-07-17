@@ -75,7 +75,7 @@ ISSUE_EXPORT_COLUMNS = [
     "modality",
     "source_table",
     "source_record_id",
-    "related_record_ids",
+    "related_record_id_count",
     "message",
     "created_at",
 ]
@@ -754,6 +754,10 @@ def _analysis_export_frame(df: pd.DataFrame, table_key: str | None = None) -> pd
                 rows.extend(_cycle_unmatched_export_rows(base, data))
             elif table_key == "cycle_matched":
                 rows.extend(_cycle_matched_export_rows(base, data))
+            elif table_key == "visit":
+                rows.append(base | _visit_export_payload(data))
+            elif table_key == "issue":
+                rows.append(base | _issue_export_payload(data))
             else:
                 rows.append(base | _flatten_payload_for_export(data))
         else:
@@ -764,19 +768,23 @@ def _analysis_export_frame(df: pd.DataFrame, table_key: str | None = None) -> pd
 def _trial_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     source_record_ids = _payload_value(data, "source_record_ids", {}) or {}
     gaitrite_cycle_ids = source_record_ids.get("gaitrite_cycle", []) if isinstance(source_record_ids, Mapping) else []
+    if not isinstance(gaitrite_cycle_ids, Sequence) or isinstance(gaitrite_cycle_ids, (str, bytes)):
+        gaitrite_cycle_ids = [gaitrite_cycle_ids]
     gaitrite_cycles = _payload_value(data, "gaitrite_cycles", []) or []
     payload = {
         "trial_uid": _payload_value(data, "trial_uid"),
         "xsens_source_record_id": source_record_ids.get("xsens") if isinstance(source_record_ids, Mapping) else None,
         "delsys_source_record_id": source_record_ids.get("delsys") if isinstance(source_record_ids, Mapping) else None,
         "gaitrite_loaded_source_record_id": source_record_ids.get("gaitrite_loaded") if isinstance(source_record_ids, Mapping) else None,
-        "gaitrite_cycle_source_record_ids": _export_value(gaitrite_cycle_ids),
+        "gaitrite_cycle_source_record_id_count": len(gaitrite_cycle_ids),
         "gaitrite_cycle_count": len(gaitrite_cycles),
         "has_xsens": bool(_payload_value(data, "xsens")),
         "has_delsys": bool(_payload_value(data, "delsys")),
         "has_gaitrite_loaded": bool(_payload_value(data, "gaitrite_loaded")),
         "created_at": _payload_value(data, "created_at"),
     }
+    for idx, record_id in enumerate(gaitrite_cycle_ids, start=1):
+        payload[f"gaitrite_cycle_source_record_id_{idx}"] = _export_scalar(record_id)
     return payload
 
 
@@ -798,7 +806,10 @@ def _cycle_unmatched_export_rows(base: Mapping[str, Any], data: Mapping[str, Any
         if not isinstance(signals, Mapping):
             continue
         for signal_name, values in signals.items():
-            arr = _as_float_array(values)
+            try:
+                arr = _as_float_array(values)
+            except (TypeError, ValueError):
+                continue
             if arr.size == 0:
                 continue
             denominator = max(arr.size - 1, 1)
@@ -829,6 +840,7 @@ def _scalar_metric_columns(metrics: Mapping[str, Any]) -> dict[str, Any]:
         if decoded is None or isinstance(decoded, (str, int, float, bool)):
             out[f"gaitrite_{_safe_name(key)}"] = decoded
     return out
+
 
 def _prefixed_scalar_metric_columns(prefix: str, metrics: Mapping[str, Any]) -> dict[str, Any]:
     return {
@@ -879,41 +891,64 @@ def _cycle_matched_export_rows(base: Mapping[str, Any], data: Mapping[str, Any])
         return rows
     return [matched_base | {"signal_group": None, "signal_name": None, "point_index": None, "percent_gait_cycle": None, "value": None}]
 
+
+def _visit_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
+    # VisitSummary already stores wide max_emg_* scalar columns; do not export
+    # the nested max_emg dict blob alongside them.
+    return _flatten_payload_for_export({key: value for key, value in data.items() if key != "max_emg"})
+
+
+def _issue_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
+    payload = {}
+    for key in ISSUE_EXPORT_COLUMNS:
+        if key == "related_record_id_count":
+            continue
+        payload[key] = _export_scalar(_payload_value(data, key))
+    related = _payload_value(data, "related_record_ids", []) or []
+    if not isinstance(related, Sequence) or isinstance(related, (str, bytes)):
+        related = [related]
+    payload["related_record_id_count"] = len(related)
+    for idx, record_id in enumerate(related, start=1):
+        payload[f"related_record_id_{idx}"] = _export_scalar(record_id)
+    return payload
+
+
 def _flatten_payload_for_export(data: Mapping[str, Any]) -> dict[str, Any]:
-    out = {}
+    out: dict[str, Any] = {}
     for key, value in data.items():
-        if isinstance(value, Mapping):
-            for subkey, subvalue in value.items():
-                flat_key = f"{key}_{_safe_name(subkey)}"
-                out[flat_key] = _export_value(subvalue)
-        else:
-            out[_safe_name(key)] = _export_value(value)
+        out.update(_flatten_value_for_export(_safe_name(key), value))
     return out
 
 
-def _export_value(value):
+def _flatten_value_for_export(prefix: str, value: Any) -> dict[str, Any]:
+    value = _decode_payload_value(value)
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, Mapping):
+        if not value:
+            return {f"{prefix}_count": 0}
+        out: dict[str, Any] = {}
+        for key, nested_value in value.items():
+            out.update(_flatten_value_for_export(f"{prefix}_{_safe_name(key)}", nested_value))
+        return out
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, (list, tuple)) and not isinstance(value, (str, bytes)):
+        out = {f"{prefix}_count": len(value)}
+        for idx, nested_value in enumerate(value, start=1):
+            out.update(_flatten_value_for_export(f"{prefix}_{idx}", nested_value))
+        return out
+    return {prefix: _export_scalar(value)}
+
+
+def _export_scalar(value: Any):
+    value = _decode_payload_value(value)
     if isinstance(value, np.generic):
         return value.item()
-    if isinstance(value, (Mapping, list, tuple, np.ndarray)):
-        return _json_safe(value)
-    return value
-
-
-def _json_safe(value: Any):
-    import json
-
-    def convert(item):
-        if isinstance(item, Mapping):
-            return {str(k): convert(v) for k, v in item.items()}
-        if isinstance(item, np.ndarray):
-            return convert(item.tolist())
-        if isinstance(item, (list, tuple)):
-            return [convert(v) for v in item]
-        if isinstance(item, np.generic):
-            return item.item()
-        return item
-
-    return json.dumps(convert(value), sort_keys=True)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    text = str(value)
+    return text.translate(str.maketrans({"{": "(", "}": ")", "[": "(", "]": ")"}))
 
 
 def _row_value(row, key: str):
