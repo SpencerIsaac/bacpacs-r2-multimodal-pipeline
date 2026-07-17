@@ -87,11 +87,11 @@ Default severities are:
 Exports are written to `analysis_scripts/exports` unless `--output-dir` is supplied.
 
 ```text
-YYYYMMDD_bacpacs_trial.csv
-YYYYMMDD_bacpacs_cycle_unmatched.csv
-YYYYMMDD_bacpacs_cycle_matched.csv
-YYYYMMDD_bacpacs_visit.csv
-YYYYMMDD_bacpacs_analysis_issues.csv
+YYYYMMDD_r1_bacpacs_trial.csv
+YYYYMMDD_r1_bacpacs_cycle_unmatched.csv
+YYYYMMDD_r1_bacpacs_cycle_matched.csv
+YYYYMMDD_r1_bacpacs_visit.csv
+YYYYMMDD_r1_bacpacs_analysis_issues.csv
 ```
 
 The issues export is written even when there are no issues, so downstream scripts can depend on the file existing after a successful export.

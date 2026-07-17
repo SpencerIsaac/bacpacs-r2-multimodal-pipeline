@@ -81,6 +81,11 @@ def test_export_hard_fails_without_analysis_tables(tmp_path):
         da.export_analysis_tables(study="R2", database_path=tmp_path / "empty.duckdb", output_dir=tmp_path)
 
 
+
+def test_export_filename_includes_study_prefix():
+    assert da._export_filename("20260716", "R1", "bacpacs_trial.csv") == "20260716_r1_bacpacs_trial.csv"
+    assert da._export_filename("20260716", "R2", "bacpacs_visit.csv") == "20260716_r2_bacpacs_visit.csv"
+
 def test_trial_export_is_manifest_not_full_signal_payload():
     df = __import__("pandas").DataFrame([
         {

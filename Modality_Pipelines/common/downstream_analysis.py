@@ -356,11 +356,11 @@ def export_analysis_tables(study: str = "R2", output_dir: str | Path | None = No
         df = _load_table(ctx, key)
         if df.empty:
             if key == "issue" and written:
-                output = output_root / f"{date_prefix}_{filename}"
+                output = output_root / _export_filename(date_prefix, ctx["study"], filename)
                 pd.DataFrame(columns=ISSUE_EXPORT_COLUMNS).to_csv(output, index=False)
                 written[key] = str(output)
             continue
-        output = output_root / f"{date_prefix}_{filename}"
+        output = output_root / _export_filename(date_prefix, ctx["study"], filename)
         _analysis_export_frame(df, table_key=key).to_csv(output, index=False)
         written[key] = str(output)
     if not written:
@@ -368,6 +368,8 @@ def export_analysis_tables(study: str = "R2", output_dir: str | Path | None = No
     return written
 
 
+def _export_filename(date_prefix: str, study: str, filename: str) -> str:
+    return f"{date_prefix}_{study.lower()}_{filename}"
 def build_all(study: str = "R2", output_dir: str | Path | None = None, **filters) -> dict[str, Any]:
     result = {
         "build_trial": build_trial_analysis(study=study, **filters),
