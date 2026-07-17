@@ -164,7 +164,7 @@ def test_cycle_unmatched_export_is_long_form_for_plotting():
     assert exported.loc[0, "gaitrite_Stride_time"] == 1.2
 
 
-def test_cycle_matched_export_omits_duplicate_source_cycle_blobs():
+def test_cycle_matched_export_is_long_form_for_plotting():
     df = __import__("pandas").DataFrame([
         {
             "participant_number": "001",
@@ -186,6 +186,7 @@ def test_cycle_matched_export_omits_duplicate_source_cycle_blobs():
                 "delsys_time_normalized": {"LTA": [0.1], "RTA": [0.2]},
                 "delsys_normalized_time_normalized": {"LTA": [0.01], "RTA": [0.02]},
                 "xsens_time_normalized": {"LKnee": [1.0], "RKnee": [2.0]},
+                "gaitrite_metrics": {"current": {"Stride_time": 1.1}, "next": {"Stride_time": 1.2}},
                 "created_at": "2026-07-16T12:00:00",
             },
         }
@@ -193,8 +194,11 @@ def test_cycle_matched_export_omits_duplicate_source_cycle_blobs():
 
     exported = da._analysis_export_frame(df, table_key="cycle_matched")
 
+    assert len(exported) == 6
+    assert {"signal_group", "signal_name", "point_index", "percent_gait_cycle", "value"}.issubset(exported.columns)
     assert "current_cycle_delsys_time_normalized" not in exported.columns
-    assert "next_cycle_delsys_time_normalized" not in exported.columns
-    assert "delsys_time_normalized_LTA" in exported.columns
-    assert "delsys_normalized_time_normalized_RTA" in exported.columns
+    assert "delsys_time_normalized_LTA" not in exported.columns
     assert exported.loc[0, "left_cycle_source_id"] == "left-id"
+    assert exported.loc[0, "gaitrite_current_Stride_time"] == 1.1
+    assert exported.loc[0, "signal_group"] == "delsys_time_normalized"
+    assert set(exported["signal_name"]) == {"LTA", "RTA", "LKnee", "RKnee"}

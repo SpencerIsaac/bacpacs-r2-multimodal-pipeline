@@ -94,7 +94,7 @@ YYYYMMDD_r1_bacpacs_visit.csv
 YYYYMMDD_r1_bacpacs_analysis_issues.csv
 ```
 
-The unmatched cycle export is written in long form for plotting. Each row is one signal value at one time-normalized point, with `signal_group`, `signal_name`, `point_index`, `percent_gait_cycle`, and `value` columns plus the trial/cycle metadata. For example, filter `signal_group == "delsys_normalized_time_normalized"` and `signal_name == "LTA"`, then plot `percent_gait_cycle` against `value`.
+The unmatched and matched cycle exports are written in long form for plotting. Each row is one signal value at one time-normalized point, with `signal_group`, `signal_name`, `point_index`, `percent_gait_cycle`, and `value` columns plus the trial/cycle metadata. For example, filter `signal_group == "delsys_normalized_time_normalized"` and `signal_name == "LTA"`, then plot `percent_gait_cycle` against `value`.
 
 The issues export is written even when there are no issues, so downstream scripts can depend on the file existing after a successful export.
 

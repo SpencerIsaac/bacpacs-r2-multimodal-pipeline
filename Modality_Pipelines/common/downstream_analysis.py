@@ -753,7 +753,7 @@ def _analysis_export_frame(df: pd.DataFrame, table_key: str | None = None) -> pd
             elif table_key == "cycle_unmatched":
                 rows.extend(_cycle_unmatched_export_rows(base, data))
             elif table_key == "cycle_matched":
-                rows.append(base | _cycle_matched_export_payload(data))
+                rows.extend(_cycle_matched_export_rows(base, data))
             else:
                 rows.append(base | _flatten_payload_for_export(data))
         else:
@@ -829,10 +829,56 @@ def _scalar_metric_columns(metrics: Mapping[str, Any]) -> dict[str, Any]:
         if decoded is None or isinstance(decoded, (str, int, float, bool)):
             out[f"gaitrite_{_safe_name(key)}"] = decoded
     return out
-def _cycle_matched_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
-    return _flatten_payload_for_export(
-        {key: value for key, value in data.items() if key not in {"current_cycle", "next_cycle"}}
-    )
+
+def _prefixed_scalar_metric_columns(prefix: str, metrics: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        f"gaitrite_{prefix}_{key.removeprefix('gaitrite_')}": value
+        for key, value in _scalar_metric_columns(metrics).items()
+    }
+
+
+def _cycle_matched_export_rows(base: Mapping[str, Any], data: Mapping[str, Any]) -> list[dict[str, Any]]:
+    matched_base = dict(base) | {
+        "matched_cycle_index": _payload_value(data, "matched_cycle_index"),
+        "ipsilateral_side": _payload_value(data, "ipsilateral_side"),
+        "contralateral_side": _payload_value(data, "contralateral_side"),
+        "left_cycle_source_id": _payload_value(data, "left_cycle_source_id"),
+        "right_cycle_source_id": _payload_value(data, "right_cycle_source_id"),
+        "created_at": _payload_value(data, "created_at"),
+    }
+    gaitrite_metrics = _payload_value(data, "gaitrite_metrics", {}) or {}
+    if isinstance(gaitrite_metrics, Mapping):
+        matched_base.update(_prefixed_scalar_metric_columns("current", gaitrite_metrics.get("current", {}) or {}))
+        matched_base.update(_prefixed_scalar_metric_columns("next", gaitrite_metrics.get("next", {}) or {}))
+
+    rows: list[dict[str, Any]] = []
+    for signal_group in ("delsys_time_normalized", "delsys_normalized_time_normalized", "xsens_time_normalized"):
+        signals = _payload_value(data, signal_group, {}) or {}
+        if not isinstance(signals, Mapping):
+            continue
+        for signal_name, values in signals.items():
+            try:
+                arr = _as_float_array(values)
+            except (TypeError, ValueError):
+                continue
+            if arr.size == 0:
+                continue
+            denominator = max(arr.size - 1, 1)
+            for point_index, value in enumerate(arr):
+                rows.append(
+                    matched_base
+                    | {
+                        "signal_group": signal_group,
+                        "signal_name": signal_name,
+                        "point_index": point_index,
+                        "percent_gait_cycle": point_index * 100.0 / denominator,
+                        "value": None if np.isnan(value) else float(value),
+                    }
+                )
+    if rows:
+        return rows
+    return [matched_base | {"signal_group": None, "signal_name": None, "point_index": None, "percent_gait_cycle": None, "value": None}]
+
 def _flatten_payload_for_export(data: Mapping[str, Any]) -> dict[str, Any]:
     out = {}
     for key, value in data.items():
