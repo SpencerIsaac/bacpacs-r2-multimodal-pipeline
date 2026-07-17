@@ -750,6 +750,8 @@ def _analysis_export_frame(df: pd.DataFrame, table_key: str | None = None) -> pd
         if isinstance(data, Mapping):
             if table_key == "trial":
                 rows.append(base | _trial_export_payload(data))
+            elif table_key == "cycle_matched":
+                rows.append(base | _cycle_matched_export_payload(data))
             else:
                 rows.append(base | _flatten_payload_for_export(data))
         else:
@@ -776,6 +778,10 @@ def _trial_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _cycle_matched_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
+    return _flatten_payload_for_export(
+        {key: value for key, value in data.items() if key not in {"current_cycle", "next_cycle"}}
+    )
 def _flatten_payload_for_export(data: Mapping[str, Any]) -> dict[str, Any]:
     out = {}
     for key, value in data.items():

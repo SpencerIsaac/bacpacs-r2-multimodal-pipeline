@@ -122,3 +122,38 @@ def test_trial_export_is_manifest_not_full_signal_payload():
     assert "gaitrite_cycles" not in exported.columns
     assert exported.loc[0, "gaitrite_cycle_count"] == 2
     assert exported.loc[0, "xsens_source_record_id"] == "x1"
+
+def test_cycle_matched_export_omits_duplicate_source_cycle_blobs():
+    df = __import__("pandas").DataFrame([
+        {
+            "participant_number": "001",
+            "visit": "BL",
+            "test": "10MWT",
+            "condition": "noAFO",
+            "speed": "FV",
+            "trial": "1",
+            "cycle": "1",
+            "__record_id": "matched-record",
+            "data": {
+                "matched_cycle_index": 1,
+                "ipsilateral_side": "R",
+                "contralateral_side": "L",
+                "left_cycle_source_id": "left-id",
+                "right_cycle_source_id": "right-id",
+                "current_cycle": {"delsys_time_normalized": {"RTA": list(range(101))}},
+                "next_cycle": {"delsys_time_normalized": {"LTA": list(range(101))}},
+                "delsys_time_normalized": {"LTA": [0.1], "RTA": [0.2]},
+                "delsys_normalized_time_normalized": {"LTA": [0.01], "RTA": [0.02]},
+                "xsens_time_normalized": {"LKnee": [1.0], "RKnee": [2.0]},
+                "created_at": "2026-07-16T12:00:00",
+            },
+        }
+    ])
+
+    exported = da._analysis_export_frame(df, table_key="cycle_matched")
+
+    assert "current_cycle_delsys_time_normalized" not in exported.columns
+    assert "next_cycle_delsys_time_normalized" not in exported.columns
+    assert "delsys_time_normalized_LTA" in exported.columns
+    assert "delsys_normalized_time_normalized_RTA" in exported.columns
+    assert exported.loc[0, "left_cycle_source_id"] == "left-id"
