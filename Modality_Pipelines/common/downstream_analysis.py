@@ -750,6 +750,8 @@ def _analysis_export_frame(df: pd.DataFrame, table_key: str | None = None) -> pd
         if isinstance(data, Mapping):
             if table_key == "trial":
                 rows.append(base | _trial_export_payload(data))
+            elif table_key == "cycle_unmatched":
+                rows.extend(_cycle_unmatched_export_rows(base, data))
             elif table_key == "cycle_matched":
                 rows.append(base | _cycle_matched_export_payload(data))
             else:
@@ -778,6 +780,55 @@ def _trial_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _cycle_unmatched_export_rows(base: Mapping[str, Any], data: Mapping[str, Any]) -> list[dict[str, Any]]:
+    cycle_base = dict(base) | {
+        "trial_uid": _payload_value(data, "trial_uid"),
+        "cycle_index": _payload_value(data, "cycle_index"),
+        "side": _payload_value(data, "side"),
+        "start_foot": _payload_value(data, "start_foot"),
+        "cycle_start_seconds": _payload_value(data, "cycle_start_seconds"),
+        "cycle_end_seconds": _payload_value(data, "cycle_end_seconds"),
+        "normalized_at": _payload_value(data, "normalized_at"),
+    }
+    cycle_base.update(_scalar_metric_columns(_payload_value(data, "gaitrite_metrics", {}) or {}))
+
+    rows: list[dict[str, Any]] = []
+    for signal_group in ("delsys_time_normalized", "delsys_normalized_time_normalized", "xsens_time_normalized"):
+        signals = _payload_value(data, signal_group, {}) or {}
+        if not isinstance(signals, Mapping):
+            continue
+        for signal_name, values in signals.items():
+            arr = _as_float_array(values)
+            if arr.size == 0:
+                continue
+            denominator = max(arr.size - 1, 1)
+            for point_index, value in enumerate(arr):
+                rows.append(
+                    cycle_base
+                    | {
+                        "signal_group": signal_group,
+                        "signal_name": signal_name,
+                        "point_index": point_index,
+                        "percent_gait_cycle": point_index * 100.0 / denominator,
+                        "value": None if np.isnan(value) else float(value),
+                    }
+                )
+    if rows:
+        return rows
+    return [cycle_base | {"signal_group": None, "signal_name": None, "point_index": None, "percent_gait_cycle": None, "value": None}]
+
+
+def _scalar_metric_columns(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(metrics, Mapping):
+        return {}
+    out = {}
+    for key, value in metrics.items():
+        decoded = _decode_payload_value(value)
+        if isinstance(decoded, np.generic):
+            decoded = decoded.item()
+        if decoded is None or isinstance(decoded, (str, int, float, bool)):
+            out[f"gaitrite_{_safe_name(key)}"] = decoded
+    return out
 def _cycle_matched_export_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     return _flatten_payload_for_export(
         {key: value for key, value in data.items() if key not in {"current_cycle", "next_cycle"}}

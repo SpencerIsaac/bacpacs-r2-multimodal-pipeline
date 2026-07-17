@@ -123,6 +123,47 @@ def test_trial_export_is_manifest_not_full_signal_payload():
     assert exported.loc[0, "gaitrite_cycle_count"] == 2
     assert exported.loc[0, "xsens_source_record_id"] == "x1"
 
+
+
+def test_cycle_unmatched_export_is_long_form_for_plotting():
+    df = __import__("pandas").DataFrame([
+        {
+            "participant_number": "001",
+            "visit": "BL",
+            "test": "10MWT",
+            "condition": "AFO",
+            "speed": "FV",
+            "trial": "1",
+            "cycle": "1",
+            "__record_id": "cycle-record",
+            "data": {
+                "trial_uid": "001_BL_10MWT_AFO_FV_1",
+                "cycle_index": 1,
+                "side": "L",
+                "start_foot": "L",
+                "cycle_start_seconds": 1.0,
+                "cycle_end_seconds": 2.0,
+                "delsys_time_normalized": {"LTA": [0.1, 0.2, 0.3]},
+                "delsys_normalized_time_normalized": {"LTA": [0.01, 0.02, 0.03]},
+                "xsens_time_normalized": {"LKnee": [10.0, 20.0, 30.0]},
+                "gaitrite_metrics": {"Stride_time": 1.2},
+                "normalized_at": "2026-07-16T12:00:00",
+            },
+        }
+    ])
+
+    exported = da._analysis_export_frame(df, table_key="cycle_unmatched")
+
+    assert len(exported) == 9
+    assert {"signal_group", "signal_name", "point_index", "percent_gait_cycle", "value"}.issubset(exported.columns)
+    assert "delsys_time_normalized" not in exported.columns
+    assert exported.loc[0, "signal_group"] == "delsys_time_normalized"
+    assert exported.loc[0, "signal_name"] == "LTA"
+    assert exported.loc[0, "percent_gait_cycle"] == 0.0
+    assert exported.loc[2, "percent_gait_cycle"] == 100.0
+    assert exported.loc[0, "gaitrite_Stride_time"] == 1.2
+
+
 def test_cycle_matched_export_omits_duplicate_source_cycle_blobs():
     df = __import__("pandas").DataFrame([
         {
