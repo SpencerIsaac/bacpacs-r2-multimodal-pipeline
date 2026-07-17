@@ -100,17 +100,28 @@ The issues export is written even when there are no issues, so downstream script
 
 ## Python cycle plots
 
-Use `analysis_scripts/plot_bacpacs_cycle_matched.py` to make Aim1-style matched-cycle plots from the long-form matched-cycle export. The script writes self-contained HTML/SVG pages and only requires `pandas`, so it works in the repo `BAKPACS_env` without `matplotlib` or `seaborn`.
+Use `analysis_scripts/plot_bacpacs_cycle_matched.py` to make seaborn/matplotlib plots from the long-form matched-cycle export. The script writes `.png` and `.svg` figures for two plot families:
+
+- `mean_by_condition`: one mean curve per condition, faceted by muscle/joint signal.
+- `overlay`: faint individual matched gait-cycle traces, faceted by muscle/joint signal.
+
+Install plotting dependencies in the repo environment if needed:
 
 ```powershell
-& .\BAKPACS_env\python.exe .\analysis_scripts\plot_bacpacs_cycle_matched.py `
+.\BAKPACS_env\python.exe -m pip install matplotlib seaborn
+```
+
+Then run:
+
+```powershell
+.\BAKPACS_env\python.exe .\analysis_scripts\plot_bacpacs_cycle_matched.py `
   --input .\analysis_scripts\exports\20260717_r1_bacpacs_cycle_matched.csv `
   --participant 1 `
   --visit BL `
   --output-dir .\analysis_scripts\plots\r1_001_bl_cycle_matched
 ```
 
-The generated `index.html` links to one plot page per participant/visit/test/condition/speed group. By default it plots `delsys_normalized_time_normalized` and `xsens_time_normalized` when those signal groups are present. Each signal gets a panel with faint individual matched cycles plus a thicker mean line.
+By default it plots `delsys_normalized_time_normalized` and `xsens_time_normalized` when those signal groups are present. Use `--signals LTA RTA` to restrict the panels or `--signal-group delsys_normalized_time_normalized` to restrict the signal group.
 
 MATLAB/Python ad hoc exports should use exact table names, for example:
 

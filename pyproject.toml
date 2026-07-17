@@ -22,6 +22,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+analysis = [
+    "matplotlib",
+    "seaborn",
+]
 docs = [
     "mkdocs",
 ]
