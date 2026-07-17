@@ -22,9 +22,6 @@ DB_files/
 *.log
 *.tmp
 *.bak
-analysis_scripts/exports/*
-!analysis_scripts/exports/r1_bl_gaitrite_raw/
-!analysis_scripts/exports/r1_bl_gaitrite_raw/**
 
 # OS/editor files
 .DS_Store
