@@ -74,7 +74,7 @@ def main() -> int:
         if subset.empty:
             continue
         muscle, side = SIGNALS[signal_name]
-        fig, ax = plt.subplots(figsize=(14, 5.2), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(10.5, 5.2), constrained_layout=True)
         draw_individual_cycles(ax, subset)
         draw_condition_means(ax, subset)
         ax.set_title(f"R1 001 BL {side} {muscle} - AFO vs noAFO", fontsize=18, weight="bold")
