@@ -81,8 +81,7 @@ def main() -> int:
         ax.set_xlabel("Gait cycle (%)")
         ax.set_ylabel("Normalized EMG (EMG / visit max)")
         ax.set_xlim(0, 100)
-        ax.set_ylim(bottom=0)
-        ax.legend(title="Condition", loc="upper right", frameon=True)
+        ax.set_ylim(0, 0.5)
         ax.grid(True, axis="both", color="0.86", linewidth=0.8)
 
         path = OUTPUT_DIR / f"r1_001_bl_{side.lower()}_{muscle.lower()}_afo_vs_noafo.png"
