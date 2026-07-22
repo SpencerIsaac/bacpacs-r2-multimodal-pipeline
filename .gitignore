@@ -23,6 +23,12 @@ DB_files/
 *.tmp
 *.bak
 
+# Generated analysis outputs (CSV/xlsx exports, PNG/SVG plots).
+# Reproducible from the live DuckDB or from surviving export CSVs via the
+# scripts in analysis_scripts/ (which remain tracked) - not source code.
+analysis_scripts/exports/
+analysis_scripts/plots/
+
 # OS/editor files
 .DS_Store
 Thumbs.db
